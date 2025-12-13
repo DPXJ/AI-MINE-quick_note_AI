@@ -190,27 +190,51 @@ class QuickNoteApp(QObject):
         else:
             self.clipboard_monitor.stop()
     
-    def _on_quick_input_submitted(self, content: str):
+    def _on_quick_input_submitted(self, platform: str, content: str, tags: str = ""):
         """处理快速输入的内容"""
-        logger.info(f"收到快速输入: {content[:50]}...")
+        logger.info(f"收到快速输入: 平台={platform}, 内容={content[:50]}..., 标签={tags}")
         
-        if not self.notion_api:
-            self.tray_icon.show_message("配置错误", "请先在设置界面配置Notion API")
-            logger.error("Notion API未初始化")
-            return
-        
-        # 显示处理中的提示
-        self.tray_icon.show_message("处理中", "正在保存到Notion...")
-        
-        # 保存到Notion
-        success = self.notion_api.add_inspiration(content)
-        
-        if success:
-            self.tray_icon.show_message("保存成功", "灵感已保存到Notion ✅")
-            logger.info("快速输入已保存到Notion")
+        if platform == "notion":
+            # 保存到Notion
+            if not self.notion_api:
+                self.tray_icon.show_message("配置错误", "请先在设置界面配置Notion API")
+                logger.error("Notion API未初始化")
+                return
+            
+            self.tray_icon.show_message("处理中", "正在保存到Notion...")
+            
+            success = self.notion_api.add_inspiration(content)
+            
+            if success:
+                self.tray_icon.show_message("保存成功", "灵感已保存到Notion ✅")
+                logger.info("快速输入已保存到Notion")
+            else:
+                self.tray_icon.show_message("保存失败", "保存到Notion失败 ❌")
+                logger.error("保存到Notion失败")
+                
+        elif platform == "flomo":
+            # 保存到Flomo
+            if not self.flomo_api:
+                self.tray_icon.show_message("配置错误", "请先在设置界面配置Flomo API")
+                logger.error("Flomo API未初始化")
+                return
+            
+            self.tray_icon.show_message("处理中", "正在保存到Flomo...")
+            
+            # 解析标签（空格分隔）
+            tag_list = [tag.strip() for tag in tags.split() if tag.strip()] if tags else ["闪念"]
+            
+            success = self.flomo_api.add_memo(content, tags=tag_list)
+            
+            if success:
+                tags_display = ", ".join(tag_list) if tag_list else ""
+                self.tray_icon.show_message("保存成功", f"已保存到Flomo ✅\n标签: {tags_display}")
+                logger.info(f"快速输入已保存到Flomo，标签: {tag_list}")
+            else:
+                self.tray_icon.show_message("保存失败", "保存到Flomo失败 ❌")
+                logger.error("保存到Flomo失败")
         else:
-            self.tray_icon.show_message("保存失败", "保存到Notion失败 ❌")
-            logger.error("保存到Notion失败")
+            logger.warning(f"未知的平台: {platform}")
     
     def _on_clipboard_content(self, content: str):
         """处理剪切板内容"""

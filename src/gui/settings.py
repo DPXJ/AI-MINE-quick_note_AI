@@ -11,6 +11,36 @@ from loguru import logger
 from src.gui.hotkey_input import HotkeyInput
 
 
+# 默认提示词
+DEFAULT_FLOMO_PROMPT = """你是一个内容分类助手。请判断以下内容是否有价值，以及应该发送到哪里。
+
+内容类型定义：
+- 金句：深刻的见解、启发性的语句
+- 产品知识：产品设计、用户体验相关
+- AI知识：人工智能技术、趋势、应用
+- 方法论：可复用的思维框架和方法
+
+如果内容符合以上任一类型，返回JSON：
+{{"valuable": true, "type": "flomo", "category": "金句|产品|AI|方法论", "tags": ["标签1", "标签2"]}}
+
+如果不符合，返回：
+{{"valuable": false}}
+
+待分析内容：
+{content}"""
+
+DEFAULT_NOTION_PROMPT = """你是一个任务识别助手。请判断以下内容是否包含任务、待办或灵感。
+
+如果是任务/待办/灵感，返回JSON：
+{{"valuable": true, "type": "notion", "title": "提取的标题", "priority": "高|中|低"}}
+
+如果不是，返回：
+{{"valuable": false}}
+
+待分析内容：
+{content}"""
+
+
 class SettingsDialog(QDialog):
     """设置对话框"""
     
@@ -305,33 +335,231 @@ class SettingsDialog(QDialog):
     
     def _create_rules_tab(self) -> QWidget:
         """创建AI规则标签页"""
-        widget = QWidget()
-        layout = QVBoxLayout()
-        
-        label = QLabel("配置AI识别规则（编辑 config.yaml 文件）：")
-        label.setStyleSheet("font-weight: bold; margin: 10px;")
-        layout.addWidget(label)
-        
-        self.rules_text = QTextEdit()
-        self.rules_text.setPlaceholderText("在这里显示AI规则配置...")
-        self.rules_text.setReadOnly(True)
-        self.rules_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #f5f5f5;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 10px;
-                font-family: 'Consolas', monospace;
+        # 创建滚动区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background: #f5f5f5;
             }
         """)
-        layout.addWidget(self.rules_text)
         
-        hint = QLabel("💡 提示：请直接编辑项目目录下的 config.yaml 文件来修改AI规则")
-        hint.setStyleSheet("color: #666; font-size: 11px; margin: 5px;")
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 标题
+        title = QLabel("🤖 AI识别规则配置")
+        title.setStyleSheet("""
+            QLabel {
+                color: #007acc;
+                font-size: 18px;
+                font-weight: bold;
+                padding: 10px 0;
+            }
+        """)
+        layout.addWidget(title)
+        
+        # Flomo规则配置
+        flomo_group = QGroupBox()
+        flomo_layout = QVBoxLayout()
+        
+        flomo_title_layout = QHBoxLayout()
+        flomo_title = QLabel("│ Flomo 自动同步规则")
+        flomo_title.setStyleSheet("""
+            QLabel {
+                color: #007acc;
+                font-size: 15px;
+                font-weight: bold;
+                padding: 8px 0;
+            }
+        """)
+        flomo_title_layout.addWidget(flomo_title)
+        flomo_title_layout.addStretch()
+        
+        # Flomo开关
+        self.flomo_auto_sync = QCheckBox("启用自动同步")
+        self.flomo_auto_sync.setChecked(True)
+        self.flomo_auto_sync.setStyleSheet("""
+            QCheckBox {
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+            }
+        """)
+        flomo_title_layout.addWidget(self.flomo_auto_sync)
+        
+        flomo_layout.addLayout(flomo_title_layout)
+        
+        flomo_label = QLabel("AI识别提示词：")
+        flomo_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 10px;")
+        flomo_layout.addWidget(flomo_label)
+        
+        self.flomo_prompt = QTextEdit()
+        self.flomo_prompt.setPlaceholderText("输入Flomo识别提示词...")
+        self.flomo_prompt.setMinimumHeight(150)
+        self.flomo_prompt.setStyleSheet("""
+            QTextEdit {
+                background: white;
+                border: 2px solid #ccc;
+                border-radius: 4px;
+                padding: 10px;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+            QTextEdit:focus {
+                border: 2px solid #007acc;
+            }
+        """)
+        flomo_layout.addWidget(self.flomo_prompt)
+        
+        flomo_btn_layout = QHBoxLayout()
+        flomo_btn_layout.addStretch()
+        
+        flomo_reset_btn = QPushButton("🔄 重置为默认")
+        flomo_reset_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                background: #5cb85c;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #4cae4c;
+            }
+        """)
+        flomo_reset_btn.clicked.connect(self._reset_flomo_prompt)
+        flomo_btn_layout.addWidget(flomo_reset_btn)
+        
+        flomo_layout.addLayout(flomo_btn_layout)
+        flomo_group.setLayout(flomo_layout)
+        layout.addWidget(flomo_group)
+        
+        # Notion规则配置
+        notion_group = QGroupBox()
+        notion_layout = QVBoxLayout()
+        
+        notion_title_layout = QHBoxLayout()
+        notion_title = QLabel("│ Notion 自动同步规则")
+        notion_title.setStyleSheet("""
+            QLabel {
+                color: #007acc;
+                font-size: 15px;
+                font-weight: bold;
+                padding: 8px 0;
+            }
+        """)
+        notion_title_layout.addWidget(notion_title)
+        notion_title_layout.addStretch()
+        
+        # Notion开关
+        self.notion_auto_sync = QCheckBox("启用自动同步")
+        self.notion_auto_sync.setChecked(True)
+        self.notion_auto_sync.setStyleSheet("""
+            QCheckBox {
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+            }
+        """)
+        notion_title_layout.addWidget(self.notion_auto_sync)
+        
+        notion_layout.addLayout(notion_title_layout)
+        
+        notion_label = QLabel("AI识别提示词：")
+        notion_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 10px;")
+        notion_layout.addWidget(notion_label)
+        
+        self.notion_prompt = QTextEdit()
+        self.notion_prompt.setPlaceholderText("输入Notion识别提示词...")
+        self.notion_prompt.setMinimumHeight(150)
+        self.notion_prompt.setStyleSheet("""
+            QTextEdit {
+                background: white;
+                border: 2px solid #ccc;
+                border-radius: 4px;
+                padding: 10px;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+            QTextEdit:focus {
+                border: 2px solid #007acc;
+            }
+        """)
+        notion_layout.addWidget(self.notion_prompt)
+        
+        notion_btn_layout = QHBoxLayout()
+        notion_btn_layout.addStretch()
+        
+        notion_reset_btn = QPushButton("🔄 重置为默认")
+        notion_reset_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                background: #5cb85c;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #4cae4c;
+            }
+        """)
+        notion_reset_btn.clicked.connect(self._reset_notion_prompt)
+        notion_btn_layout.addWidget(notion_reset_btn)
+        
+        notion_layout.addLayout(notion_btn_layout)
+        notion_group.setLayout(notion_layout)
+        layout.addWidget(notion_group)
+        
+        # 提示信息
+        hint = QLabel("""
+💡 使用说明：
+  • 启用自动同步后，AI会根据提示词自动识别剪切板内容
+  • 提示词用于指导AI判断内容是否应该同步到对应平台
+  • 可以自定义提示词以适应你的使用习惯
+  • 点击"重置为默认"可恢复默认提示词
+  • 修改后需要保存设置才能生效
+        """)
+        hint.setStyleSheet("""
+            QLabel {
+                color: #555;
+                font-size: 14px;
+                margin: 20px 0;
+                padding: 20px;
+                background: #fff9e6;
+                border-left: 4px solid #ffc107;
+                border-radius: 6px;
+                line-height: 1.8;
+            }
+        """)
         layout.addWidget(hint)
         
+        layout.addStretch()
         widget.setLayout(layout)
-        return widget
+        
+        # 放入滚动区域
+        scroll.setWidget(widget)
+        
+        container = QWidget()
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.addWidget(scroll)
+        container.setLayout(container_layout)
+        
+        return container
     
     def _create_hotkey_tab(self) -> QWidget:
         """创建快捷键标签页"""
@@ -505,10 +733,21 @@ class SettingsDialog(QDialog):
         self.hotkey_quick.setText(self.config_obj.hotkey_quick_input)
         self.hotkey_clipboard.setText(self.config_obj.hotkey_toggle_clipboard)
         
-        # 加载AI规则（只读显示）
+        # 加载AI规则
         import yaml
         rules = self.config_obj.config.get('ai_rules', {})
-        self.rules_text.setText(yaml.dump(rules, allow_unicode=True))
+        
+        # 加载Flomo提示词
+        flomo_prompt = rules.get('flomo', {}).get('prompt', self._get_default_flomo_prompt())
+        self.flomo_prompt.setText(flomo_prompt)
+        
+        # 加载Notion提示词
+        notion_prompt = rules.get('notion', {}).get('prompt', self._get_default_notion_prompt())
+        self.notion_prompt.setText(notion_prompt)
+        
+        # 加载自动同步开关状态（从config读取，默认开启）
+        self.flomo_auto_sync.setChecked(rules.get('flomo', {}).get('enabled', True))
+        self.notion_auto_sync.setChecked(rules.get('notion', {}).get('enabled', True))
     
     def _on_provider_changed(self, provider: str):
         """当AI提供商改变时，自动更新默认配置"""
@@ -583,6 +822,24 @@ FLOMO_API_URL={self.flomo_url.text()}
             config_data['hotkeys']['quick_input'] = self.hotkey_quick.text().strip()
             config_data['hotkeys']['toggle_clipboard'] = self.hotkey_clipboard.text().strip()
             
+            # 更新AI规则配置
+            if 'ai_rules' not in config_data:
+                config_data['ai_rules'] = {}
+            
+            # 保存Flomo规则
+            if 'flomo' not in config_data['ai_rules']:
+                config_data['ai_rules']['flomo'] = {}
+            
+            config_data['ai_rules']['flomo']['enabled'] = self.flomo_auto_sync.isChecked()
+            config_data['ai_rules']['flomo']['prompt'] = self.flomo_prompt.toPlainText().strip()
+            
+            # 保存Notion规则
+            if 'notion' not in config_data['ai_rules']:
+                config_data['ai_rules']['notion'] = {}
+            
+            config_data['ai_rules']['notion']['enabled'] = self.notion_auto_sync.isChecked()
+            config_data['ai_rules']['notion']['prompt'] = self.notion_prompt.toPlainText().strip()
+            
             # 写入config.yaml
             with open(config_file, 'w', encoding='utf-8') as f:
                 yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
@@ -606,6 +863,24 @@ FLOMO_API_URL={self.flomo_url.text()}
                 "保存失败",
                 f"保存设置时出错：\n{str(e)}\n\n详细信息：\n{traceback.format_exc()[:200]}"
             )
+    
+    def _get_default_flomo_prompt(self):
+        """获取默认Flomo提示词"""
+        return DEFAULT_FLOMO_PROMPT
+    
+    def _get_default_notion_prompt(self):
+        """获取默认Notion提示词"""
+        return DEFAULT_NOTION_PROMPT
+    
+    def _reset_flomo_prompt(self):
+        """重置Flomo提示词为默认值"""
+        self.flomo_prompt.setText(self._get_default_flomo_prompt())
+        logger.info("Flomo提示词已重置为默认值")
+    
+    def _reset_notion_prompt(self):
+        """重置Notion提示词为默认值"""
+        self.notion_prompt.setText(self._get_default_notion_prompt())
+        logger.info("Notion提示词已重置为默认值")
     
     def _test_connection(self):
         """测试连接"""

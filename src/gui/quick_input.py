@@ -1,5 +1,5 @@
 """快速输入窗口"""
-from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
+from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
 from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent
 from loguru import logger
@@ -34,8 +34,8 @@ class CustomTextEdit(QTextEdit):
 class QuickInputWindow(QWidget):
     """快速输入窗口"""
     
-    # 信号：内容提交
-    content_submitted = pyqtSignal(str)
+    # 信号：内容提交（平台，内容，标签）
+    content_submitted = pyqtSignal(str, str, str)  # platform, content, tags
     
     def __init__(self, config: dict):
         """
@@ -52,8 +52,8 @@ class QuickInputWindow(QWidget):
     
     def _init_ui(self):
         """初始化UI"""
-        # 禁用DPI缩放影响
-        self.setAttribute(Qt.WA_TranslucentBackground, False)
+        # 启用透明背景以支持圆角
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
         
         # 窗口属性
         self.setWindowTitle("QuickNote - 快速输入")
@@ -66,17 +66,27 @@ class QuickInputWindow(QWidget):
         
         # 窗口大小（固定物理像素）
         width = 900  # 固定宽度
-        height = 450  # 固定高度
+        height = 500  # 增加高度以容纳Tab
         
         self.setFixedSize(width, height)
-        # 不设置透明度，保持完全不透明
-        self.setWindowOpacity(1.0)
         
         # 主题颜色
         bg_color = "#ffffff"
         fg_color = "#333333"
         accent_color = "#007acc"
         border_color = "#d0d0d0"
+        
+        # 当前目标平台（默认Notion）
+        self.target_platform = "notion"
+        
+        # 创建主容器（用于圆角）
+        main_container = QWidget()
+        main_container.setStyleSheet(f"""
+            QWidget {{
+                background: {bg_color};
+                border-radius: 12px;
+            }}
+        """)
         
         # 主布局
         layout = QVBoxLayout()
@@ -88,8 +98,8 @@ class QuickInputWindow(QWidget):
         title_bar.setStyleSheet(f"""
             QWidget {{
                 background: {accent_color};
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
+                border-top-left-radius: 12px;
+                border-top-right-radius: 12px;
             }}
         """)
         title_bar.setFixedHeight(50)
@@ -158,14 +168,100 @@ class QuickInputWindow(QWidget):
         content_widget.setStyleSheet(f"""
             QWidget {{
                 background: {bg_color};
-                border-bottom-left-radius: 8px;
-                border-bottom-right-radius: 8px;
+                border-bottom-left-radius: 12px;
+                border-bottom-right-radius: 12px;
             }}
         """)
         
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(20, 15, 20, 15)
         content_layout.setSpacing(15)
+        
+        # Tab切换按钮
+        tab_layout = QHBoxLayout()
+        tab_layout.setSpacing(10)
+        
+        self.notion_tab_btn = QPushButton("📝 Notion")
+        self.notion_tab_btn.setCheckable(True)
+        self.notion_tab_btn.setChecked(True)
+        self.notion_tab_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {accent_color};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: #005a9e;
+            }}
+            QPushButton:checked {{
+                background: {accent_color};
+            }}
+            QPushButton:!checked {{
+                background: #e0e0e0;
+                color: #666;
+            }}
+        """)
+        self.notion_tab_btn.clicked.connect(lambda: self._switch_platform("notion"))
+        tab_layout.addWidget(self.notion_tab_btn)
+        
+        self.flomo_tab_btn = QPushButton("🏷️ Flomo")
+        self.flomo_tab_btn.setCheckable(True)
+        self.flomo_tab_btn.setChecked(False)
+        self.flomo_tab_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {accent_color};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: #005a9e;
+            }}
+            QPushButton:checked {{
+                background: {accent_color};
+            }}
+            QPushButton:!checked {{
+                background: #e0e0e0;
+                color: #666;
+            }}
+        """)
+        self.flomo_tab_btn.clicked.connect(lambda: self._switch_platform("flomo"))
+        tab_layout.addWidget(self.flomo_tab_btn)
+        
+        # 标签输入（仅Flomo显示）
+        self.tags_label = QLabel("标签（用空格分隔）：")
+        self.tags_label.setStyleSheet("font-size: 13px; color: #666;")
+        self.tags_label.setVisible(False)
+        
+        self.tags_input = QLineEdit()
+        self.tags_input.setPlaceholderText("例如：产品 AI 方法论")
+        self.tags_input.setText("闪念")  # 设置默认标签
+        self.tags_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: white;
+                border: 2px solid {border_color};
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 14px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {accent_color};
+            }}
+        """)
+        self.tags_input.setVisible(False)
+        
+        tab_layout.addWidget(self.tags_label)
+        tab_layout.addWidget(self.tags_input, stretch=1)
+        tab_layout.addStretch()
+        
+        content_layout.addLayout(tab_layout)
         
         # 输入框
         self.text_edit = CustomTextEdit()  # 使用自定义的TextEdit
@@ -252,14 +348,13 @@ class QuickInputWindow(QWidget):
         content_widget.setLayout(content_layout)
         layout.addWidget(content_widget)
         
-        self.setLayout(layout)
+        main_container.setLayout(layout)
         
-        # 设置窗口圆角和阴影效果
-        self.setStyleSheet("""
-            QuickInputWindow {
-                border-radius: 8px;
-            }
-        """)
+        # 外层布局
+        outer_layout = QVBoxLayout()
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.addWidget(main_container)
+        self.setLayout(outer_layout)
     
     def _title_bar_mouse_press(self, event: QMouseEvent):
         """标题栏鼠标按下事件（开始拖动）"""
@@ -301,14 +396,51 @@ class QuickInputWindow(QWidget):
         else:
             super().keyPressEvent(event)
     
+    def _switch_platform(self, platform: str):
+        """切换目标平台"""
+        self.target_platform = platform
+        
+        if platform == "notion":
+            self.notion_tab_btn.setChecked(True)
+            self.flomo_tab_btn.setChecked(False)
+            self.tags_label.setVisible(False)
+            self.tags_input.setVisible(False)
+            self.text_edit.setPlaceholderText("输入你的灵感...")
+            logger.info("切换到Notion模式")
+        else:  # flomo
+            self.notion_tab_btn.setChecked(False)
+            self.flomo_tab_btn.setChecked(True)
+            self.tags_label.setVisible(True)
+            self.tags_input.setVisible(True)
+            # 如果标签为空，设置为默认值
+            if not self.tags_input.text().strip():
+                self.tags_input.setText("闪念")
+            self.text_edit.setPlaceholderText("输入金句、知识或方法论...")
+            logger.info("切换到Flomo模式")
+    
     def _submit_content(self):
         """提交内容"""
         content = self.text_edit.toPlainText().strip()
         
         if content:
-            logger.info(f"提交内容: {content[:50]}...")
-            self.content_submitted.emit(content)
+            # 获取标签（Flomo模式）
+            tags = ""
+            if self.target_platform == "flomo":
+                tags = self.tags_input.text().strip()
+                if not tags:
+                    tags = "闪念"  # 如果没有标签，使用默认值
+            
+            logger.info(f"提交内容到{self.target_platform}: {content[:50]}..., 标签: {tags}")
+            
+            # 发送信号：平台，内容，标签
+            self.content_submitted.emit(self.target_platform, content, tags)
+            
+            # 清空输入
             self.text_edit.clear()
+            if self.target_platform == "flomo":
+                self.tags_input.setText("闪念")  # 重置为默认值
+            else:
+                self.tags_input.clear()
             self.hide()
         else:
             logger.warning("内容为空，不提交")
