@@ -15,6 +15,7 @@ class TrayIcon(QObject):
     quit_triggered = pyqtSignal()
     restart_triggered = pyqtSignal()
     clipboard_toggled = pyqtSignal(bool)
+    clipboard_history_triggered = pyqtSignal()
     
     def __init__(self, app):
         """
@@ -60,6 +61,11 @@ class TrayIcon(QObject):
         menu.addAction(self.clipboard_action)
         
         menu.addSeparator()
+        
+        # 剪切板历史
+        history_action = QAction("📋 剪切板历史", menu)
+        history_action.triggered.connect(self.clipboard_history_triggered.emit)
+        menu.addAction(history_action)
         
         # 设置
         settings_action = QAction("⚙️ 设置", menu)

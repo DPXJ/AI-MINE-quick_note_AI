@@ -11,7 +11,7 @@ from loguru import logger
 from src.gui.hotkey_input import HotkeyInput
 
 
-# 默认提示词
+# 默认提示词（用户友好版本，不包含JSON格式说明）
 DEFAULT_FLOMO_PROMPT = """你是一个内容分类助手。请判断以下内容是否有价值，以及应该发送到哪里。
 
 内容类型定义：
@@ -20,25 +20,16 @@ DEFAULT_FLOMO_PROMPT = """你是一个内容分类助手。请判断以下内容
 - AI知识：人工智能技术、趋势、应用
 - 方法论：可复用的思维框架和方法
 
-如果内容符合以上任一类型，返回JSON：
-{{"valuable": true, "type": "flomo", "category": "金句|产品|AI|方法论", "tags": ["标签1", "标签2"]}}
-
-如果不符合，返回：
-{{"valuable": false}}
-
-待分析内容：
-{content}"""
+请根据内容类型，自动识别并分类内容。如果内容符合以上任一类型，则同步到Flomo，并自动添加相应的标签。"""
 
 DEFAULT_NOTION_PROMPT = """你是一个任务识别助手。请判断以下内容是否包含任务、待办或灵感。
 
-如果是任务/待办/灵感，返回JSON：
-{{"valuable": true, "type": "notion", "title": "提取的标题", "priority": "高|中|低"}}
+如果内容包含以下特征，则同步到Notion：
+- 包含"需要"、"要做"、"计划"、"想法"、"灵感"等关键词
+- 表达了一个待完成的任务或事项
+- 是一个想法或灵感，需要后续处理
 
-如果不是，返回：
-{{"valuable": false}}
-
-待分析内容：
-{content}"""
+请根据内容自动识别，如果符合以上特征，则同步到Notion作为待办事项。"""
 
 
 class SettingsDialog(QDialog):
@@ -57,6 +48,7 @@ class SettingsDialog(QDialog):
         """
         super().__init__(parent)
         self.config_obj = config_obj
+        self.main_app = None  # 主程序实例引用（稍后由主程序设置）
         self._init_ui()
         self._load_settings()
         logger.info("设置界面已初始化")
@@ -362,6 +354,39 @@ class SettingsDialog(QDialog):
         """)
         layout.addWidget(title)
         
+        # 总开关：剪切板监控
+        total_switch_group = QGroupBox()
+        total_switch_layout = QHBoxLayout()
+        
+        total_switch_title = QLabel("│ 剪切板监控总开关")
+        total_switch_title.setStyleSheet("""
+            QLabel {
+                color: #007acc;
+                font-size: 15px;
+                font-weight: bold;
+                padding: 8px 0;
+            }
+        """)
+        total_switch_layout.addWidget(total_switch_title)
+        total_switch_layout.addStretch()
+        
+        self.clipboard_monitor_enabled = QCheckBox("启用剪切板监控")
+        self.clipboard_monitor_enabled.setChecked(True)
+        self.clipboard_monitor_enabled.setStyleSheet("""
+            QCheckBox {
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+            }
+        """)
+        total_switch_layout.addWidget(self.clipboard_monitor_enabled)
+        
+        total_switch_group.setLayout(total_switch_layout)
+        layout.addWidget(total_switch_group)
+        
         # Flomo规则配置
         flomo_group = QGroupBox()
         flomo_layout = QVBoxLayout()
@@ -416,10 +441,32 @@ class SettingsDialog(QDialog):
                 border: 2px solid #007acc;
             }
         """)
+        # 监听文本变化，启用保存按钮
+        self.flomo_prompt.textChanged.connect(self._on_prompt_changed)
         flomo_layout.addWidget(self.flomo_prompt)
         
         flomo_btn_layout = QHBoxLayout()
         flomo_btn_layout.addStretch()
+        
+        # 保存按钮（初始隐藏，文本变化时显示）
+        self.flomo_save_btn = QPushButton("💾 保存提示词")
+        self.flomo_save_btn.setVisible(False)
+        self.flomo_save_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                background: #007acc;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #005a9e;
+            }
+        """)
+        self.flomo_save_btn.clicked.connect(lambda: self._save_prompt('flomo'))
+        flomo_btn_layout.addWidget(self.flomo_save_btn)
         
         flomo_reset_btn = QPushButton("🔄 重置为默认")
         flomo_reset_btn.setStyleSheet("""
@@ -497,10 +544,32 @@ class SettingsDialog(QDialog):
                 border: 2px solid #007acc;
             }
         """)
+        # 监听文本变化，启用保存按钮
+        self.notion_prompt.textChanged.connect(self._on_prompt_changed)
         notion_layout.addWidget(self.notion_prompt)
         
         notion_btn_layout = QHBoxLayout()
         notion_btn_layout.addStretch()
+        
+        # 保存按钮（初始隐藏，文本变化时显示）
+        self.notion_save_btn = QPushButton("💾 保存提示词")
+        self.notion_save_btn.setVisible(False)
+        self.notion_save_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                background: #007acc;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #005a9e;
+            }
+        """)
+        self.notion_save_btn.clicked.connect(lambda: self._save_prompt('notion'))
+        notion_btn_layout.addWidget(self.notion_save_btn)
         
         notion_reset_btn = QPushButton("🔄 重置为默认")
         notion_reset_btn.setStyleSheet("""
@@ -734,20 +803,54 @@ class SettingsDialog(QDialog):
         self.hotkey_clipboard.setText(self.config_obj.hotkey_toggle_clipboard)
         
         # 加载AI规则
-        import yaml
-        rules = self.config_obj.config.get('ai_rules', {})
-        
-        # 加载Flomo提示词
-        flomo_prompt = rules.get('flomo', {}).get('prompt', self._get_default_flomo_prompt())
-        self.flomo_prompt.setText(flomo_prompt)
-        
-        # 加载Notion提示词
-        notion_prompt = rules.get('notion', {}).get('prompt', self._get_default_notion_prompt())
-        self.notion_prompt.setText(notion_prompt)
+        try:
+            import yaml
+            rules = self.config_obj.config.get('ai_rules', {})
+            
+            # 加载Flomo提示词
+            if hasattr(self, 'flomo_prompt'):
+                try:
+                    flomo_prompt = rules.get('flomo', {}).get('prompt', self._get_default_flomo_prompt())
+                    self.flomo_prompt.setText(flomo_prompt)
+                except Exception as e:
+                    logger.warning(f"加载Flomo提示词失败: {e}")
+            
+            # 加载Notion提示词
+            if hasattr(self, 'notion_prompt'):
+                try:
+                    notion_prompt = rules.get('notion', {}).get('prompt', self._get_default_notion_prompt())
+                    self.notion_prompt.setText(notion_prompt)
+                except Exception as e:
+                    logger.warning(f"加载Notion提示词失败: {e}")
+        except Exception as e:
+            logger.error(f"加载AI规则失败: {e}")
+            rules = {}
         
         # 加载自动同步开关状态（从config读取，默认开启）
-        self.flomo_auto_sync.setChecked(rules.get('flomo', {}).get('enabled', True))
-        self.notion_auto_sync.setChecked(rules.get('notion', {}).get('enabled', True))
+        # 检查控件是否存在（可能在AI规则标签页中）
+        if hasattr(self, 'clipboard_monitor_enabled'):
+            try:
+                self.clipboard_monitor_enabled.setChecked(rules.get('clipboard_monitor', True))
+            except Exception as e:
+                logger.warning(f"加载剪切板监控开关失败: {e}")
+        
+        if hasattr(self, 'flomo_auto_sync'):
+            try:
+                self.flomo_auto_sync.setChecked(rules.get('flomo', {}).get('enabled', True))
+            except Exception as e:
+                logger.warning(f"加载Flomo开关失败: {e}")
+        
+        if hasattr(self, 'notion_auto_sync'):
+            try:
+                self.notion_auto_sync.setChecked(rules.get('notion', {}).get('enabled', True))
+            except Exception as e:
+                logger.warning(f"加载Notion开关失败: {e}")
+        
+        # 记录初始提示词，用于检测变化
+        if hasattr(self, 'flomo_prompt'):
+            self._flomo_prompt_original = self.flomo_prompt.toPlainText()
+        if hasattr(self, 'notion_prompt'):
+            self._notion_prompt_original = self.notion_prompt.toPlainText()
     
     def _on_provider_changed(self, provider: str):
         """当AI提供商改变时，自动更新默认配置"""
@@ -826,19 +929,35 @@ FLOMO_API_URL={self.flomo_url.text()}
             if 'ai_rules' not in config_data:
                 config_data['ai_rules'] = {}
             
-            # 保存Flomo规则
-            if 'flomo' not in config_data['ai_rules']:
-                config_data['ai_rules']['flomo'] = {}
+            # 保存剪切板监控总开关
+            if hasattr(self, 'clipboard_monitor_enabled'):
+                try:
+                    config_data['ai_rules']['clipboard_monitor'] = self.clipboard_monitor_enabled.isChecked()
+                except Exception as e:
+                    logger.warning(f"保存剪切板监控开关失败: {e}")
+                    config_data['ai_rules']['clipboard_monitor'] = True  # 默认值
             
-            config_data['ai_rules']['flomo']['enabled'] = self.flomo_auto_sync.isChecked()
-            config_data['ai_rules']['flomo']['prompt'] = self.flomo_prompt.toPlainText().strip()
+            # 保存Flomo规则
+            if hasattr(self, 'flomo_auto_sync') and hasattr(self, 'flomo_prompt'):
+                try:
+                    if 'flomo' not in config_data['ai_rules']:
+                        config_data['ai_rules']['flomo'] = {}
+                    
+                    config_data['ai_rules']['flomo']['enabled'] = self.flomo_auto_sync.isChecked()
+                    config_data['ai_rules']['flomo']['prompt'] = self.flomo_prompt.toPlainText().strip()
+                except Exception as e:
+                    logger.warning(f"保存Flomo规则失败: {e}")
             
             # 保存Notion规则
-            if 'notion' not in config_data['ai_rules']:
-                config_data['ai_rules']['notion'] = {}
-            
-            config_data['ai_rules']['notion']['enabled'] = self.notion_auto_sync.isChecked()
-            config_data['ai_rules']['notion']['prompt'] = self.notion_prompt.toPlainText().strip()
+            if hasattr(self, 'notion_auto_sync') and hasattr(self, 'notion_prompt'):
+                try:
+                    if 'notion' not in config_data['ai_rules']:
+                        config_data['ai_rules']['notion'] = {}
+                    
+                    config_data['ai_rules']['notion']['enabled'] = self.notion_auto_sync.isChecked()
+                    config_data['ai_rules']['notion']['prompt'] = self.notion_prompt.toPlainText().strip()
+                except Exception as e:
+                    logger.warning(f"保存Notion规则失败: {e}")
             
             # 写入config.yaml
             with open(config_file, 'w', encoding='utf-8') as f:
@@ -875,12 +994,141 @@ FLOMO_API_URL={self.flomo_url.text()}
     def _reset_flomo_prompt(self):
         """重置Flomo提示词为默认值"""
         self.flomo_prompt.setText(self._get_default_flomo_prompt())
+        self._flomo_prompt_original = self.flomo_prompt.toPlainText()
+        if hasattr(self, 'flomo_save_btn'):
+            self.flomo_save_btn.setVisible(False)
         logger.info("Flomo提示词已重置为默认值")
     
     def _reset_notion_prompt(self):
         """重置Notion提示词为默认值"""
         self.notion_prompt.setText(self._get_default_notion_prompt())
+        self._notion_prompt_original = self.notion_prompt.toPlainText()
+        if hasattr(self, 'notion_save_btn'):
+            self.notion_save_btn.setVisible(False)
         logger.info("Notion提示词已重置为默认值")
+    
+    def _on_prompt_changed(self):
+        """提示词文本变化时，显示保存按钮"""
+        # 检查Flomo提示词是否变化
+        if hasattr(self, 'flomo_prompt') and hasattr(self, '_flomo_prompt_original'):
+            current = self.flomo_prompt.toPlainText()
+            if current != self._flomo_prompt_original:
+                if hasattr(self, 'flomo_save_btn'):
+                    self.flomo_save_btn.setVisible(True)
+            else:
+                if hasattr(self, 'flomo_save_btn'):
+                    self.flomo_save_btn.setVisible(False)
+        
+        # 检查Notion提示词是否变化
+        if hasattr(self, 'notion_prompt') and hasattr(self, '_notion_prompt_original'):
+            current = self.notion_prompt.toPlainText()
+            if current != self._notion_prompt_original:
+                if hasattr(self, 'notion_save_btn'):
+                    self.notion_save_btn.setVisible(True)
+            else:
+                if hasattr(self, 'notion_save_btn'):
+                    self.notion_save_btn.setVisible(False)
+    
+    def _save_prompt(self, prompt_type: str):
+        """保存提示词"""
+        try:
+            import yaml
+            config_file = self.config_obj.config_file
+            
+            # 读取现有配置
+            if config_file.exists():
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config_data = yaml.safe_load(f) or {}
+            else:
+                config_data = {}
+            
+            # 更新AI规则配置
+            if 'ai_rules' not in config_data:
+                config_data['ai_rules'] = {}
+            
+            if prompt_type == 'flomo':
+                if 'flomo' not in config_data['ai_rules']:
+                    config_data['ai_rules']['flomo'] = {}
+                config_data['ai_rules']['flomo']['prompt'] = self.flomo_prompt.toPlainText().strip()
+                self._flomo_prompt_original = self.flomo_prompt.toPlainText()
+                self.flomo_save_btn.setVisible(False)
+                logger.info("Flomo提示词已保存")
+            elif prompt_type == 'notion':
+                if 'notion' not in config_data['ai_rules']:
+                    config_data['ai_rules']['notion'] = {}
+                config_data['ai_rules']['notion']['prompt'] = self.notion_prompt.toPlainText().strip()
+                self._notion_prompt_original = self.notion_prompt.toPlainText()
+                self.notion_save_btn.setVisible(False)
+                logger.info("Notion提示词已保存")
+            
+            # 写入config.yaml
+            with open(config_file, 'w', encoding='utf-8') as f:
+                yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self,
+                "保存成功",
+                f"{'Flomo' if prompt_type == 'flomo' else 'Notion'}提示词已保存！"
+            )
+            
+        except Exception as e:
+            logger.error(f"保存提示词失败: {e}")
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "保存失败",
+                f"保存提示词时出错：\n{str(e)}"
+            )
+    
+    def _refresh_clipboard_history(self):
+        """刷新剪切板历史"""
+        try:
+            # 检查控件是否存在
+            if not hasattr(self, 'clipboard_history_list'):
+                return
+            
+            # 检查main_app是否已设置
+            if not hasattr(self, 'main_app') or self.main_app is None:
+                self.clipboard_history_list.setText("等待主程序连接...")
+                return
+            
+            # 尝试从主程序获取剪切板历史
+            history = []
+            try:
+                if hasattr(self.main_app, 'clipboard_monitor') and self.main_app.clipboard_monitor:
+                    history = self.main_app.clipboard_monitor.get_history(limit=20)
+            except AttributeError:
+                logger.debug("主程序的clipboard_monitor不存在")
+            except Exception as e:
+                logger.warning(f"获取剪切板历史失败: {e}")
+            
+            # 显示历史
+            if history:
+                history_text = ""
+                for i, item in enumerate(history[-10:], 1):  # 显示最近10条
+                    preview = item[:80] + "..." if len(item) > 80 else item
+                    history_text += f"[{i}] {preview}\n"
+                    history_text += "─" * 50 + "\n\n"
+                
+                self.clipboard_history_list.setText(history_text.strip())
+            else:
+                self.clipboard_history_list.setText("暂无剪切板历史记录\n\n提示：当剪切板监控启用时，检测到的内容会自动记录在这里")
+        except AttributeError as e:
+            # 属性不存在，正常情况（main_app未设置）
+            logger.debug(f"刷新剪切板历史时main_app未设置: {e}")
+            if hasattr(self, 'clipboard_history_list'):
+                try:
+                    self.clipboard_history_list.setText("等待主程序连接...")
+                except:
+                    pass
+        except Exception as e:
+            logger.error(f"刷新剪切板历史失败: {e}")
+            if hasattr(self, 'clipboard_history_list'):
+                try:
+                    self.clipboard_history_list.setText("无法加载剪切板历史")
+                except:
+                    pass
     
     def _test_connection(self):
         """测试连接"""

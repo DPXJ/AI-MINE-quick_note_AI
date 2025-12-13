@@ -34,6 +34,8 @@ class ClipboardMonitor:
         self.thread: Optional[Thread] = None
         self.stop_event = Event()
         self.last_content = ""
+        self.history: list = []  # 剪切板历史记录
+        self.max_history = 50  # 最多保存50条历史
         
         logger.info("剪切板监控器已初始化")
     
@@ -95,6 +97,9 @@ class ClipboardMonitor:
                     if self._validate_content(current_content):
                         logger.info(f"检测到新的剪切板内容: {current_content[:50]}...")
                         
+                        # 添加到历史记录
+                        self._add_to_history(current_content)
+                        
                         # 调用回调函数
                         try:
                             self.callback(current_content)
@@ -135,4 +140,20 @@ class ClipboardMonitor:
             return False
         
         return True
+    
+    def _add_to_history(self, content: str):
+        """添加到历史记录"""
+        # 避免重复添加相同内容
+        if self.history and self.history[-1] == content:
+            return
+        
+        self.history.append(content)
+        
+        # 限制历史记录数量
+        if len(self.history) > self.max_history:
+            self.history = self.history[-self.max_history:]
+    
+    def get_history(self, limit: int = 20) -> list:
+        """获取历史记录"""
+        return self.history[-limit:] if limit else self.history
 

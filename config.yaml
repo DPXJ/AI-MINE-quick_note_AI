@@ -32,22 +32,8 @@ ai_rules:
       - 方法论：可复用的思维框架和方法
 
 
-      如果内容符合以上任一类型，返回JSON：
-
-      {{"valuable": true, "type": "flomo", "category": "金句|产品|AI|方法论", "tags": ["标签1",
-      "标签2"]}}
-
-
-      如果不符合，返回：
-
-      {{"valuable": false}}
-
-
-      待分析内容：
-
-      {content}
-
-      '
+      请根据内容类型，自动识别并分类内容。如果内容符合以上任一类型，则同步到Flomo，并自动添加相应的标签。'
+    enabled: true
   notion:
     keywords:
     - 需要
@@ -58,21 +44,18 @@ ai_rules:
     prompt: '你是一个任务识别助手。请判断以下内容是否包含任务、待办或灵感。
 
 
-      如果是任务/待办/灵感，返回JSON：
+      如果内容包含以下特征，则同步到Notion：
 
-      {{"valuable": true, "type": "notion", "title": "提取的标题", "priority": "高|中|低"}}
+      - 包含"需要"、"要做"、"计划"、"想法"、"灵感"等关键词
+
+      - 表达了一个待完成的任务或事项
+
+      - 是一个想法或灵感，需要后续处理
 
 
-      如果不是，返回：
-
-      {{"valuable": false}}
-
-
-      待分析内容：
-
-      {content}
-
-      '
+      请根据内容自动识别，如果符合以上特征，则同步到Notion作为待办事项。'
+    enabled: true
+  clipboard_monitor: true
 ui:
   quick_input:
     width: 800

@@ -72,8 +72,21 @@ class AIProcessor:
             分析结果（JSON格式）
         """
         try:
-            # 构建提示词
-            prompt = prompt_template.format(content=content)
+            # 构建提示词（用户提示词可能不包含{content}，需要添加）
+            if "{content}" in prompt_template:
+                prompt = prompt_template.format(content=content)
+            else:
+                # 如果提示词中没有{content}，自动添加
+                prompt = prompt_template + f"\n\n待分析内容：\n{content}"
+            
+            # 自动添加JSON格式要求（用户提示词中不包含这些技术细节）
+            json_instruction = """
+
+请以JSON格式返回结果：
+- 如果内容符合条件，返回：{"valuable": true, "type": "flomo"或"notion", "category": "分类", "tags": ["标签1", "标签2"]}
+- 如果内容不符合条件，返回：{"valuable": false}"""
+            
+            prompt = prompt + json_instruction
             
             # 调用AI（OpenAI和DeepSeek使用相同的API格式）
             if self.provider in ["openai", "deepseek"]:
@@ -123,19 +136,33 @@ class AIProcessor:
         """
         from src.utils.config import config
         
-        # 先尝试Flomo规则
-        flomo_prompt = config.get("ai_rules.flomo.prompt", "")
-        if flomo_prompt:
-            result = self.analyze_content(content, flomo_prompt)
-            if result and result.get("valuable") and result.get("type") == "flomo":
-                return result
+        # 检查是否启用自动同步
+        clipboard_monitor_enabled = config.get("ai_rules.clipboard_monitor", True)
+        if not clipboard_monitor_enabled:
+            logger.debug("剪切板监控已禁用")
+            return {"valuable": False, "type": None}
         
-        # 再尝试Notion规则
-        notion_prompt = config.get("ai_rules.notion.prompt", "")
-        if notion_prompt:
-            result = self.analyze_content(content, notion_prompt)
-            if result and result.get("valuable") and result.get("type") == "notion":
-                return result
+        # 先尝试Flomo规则（如果启用）
+        flomo_enabled = config.get("ai_rules.flomo.enabled", True)
+        if flomo_enabled:
+            flomo_prompt = config.get("ai_rules.flomo.prompt", "")
+            if flomo_prompt:
+                # 添加类型标识
+                flomo_prompt_with_type = flomo_prompt + "\n\n如果符合条件，返回的type必须是\"flomo\"。"
+                result = self.analyze_content(content, flomo_prompt_with_type)
+                if result and result.get("valuable") and result.get("type") == "flomo":
+                    return result
+        
+        # 再尝试Notion规则（如果启用）
+        notion_enabled = config.get("ai_rules.notion.enabled", True)
+        if notion_enabled:
+            notion_prompt = config.get("ai_rules.notion.prompt", "")
+            if notion_prompt:
+                # 添加类型标识
+                notion_prompt_with_type = notion_prompt + "\n\n如果符合条件，返回的type必须是\"notion\"。"
+                result = self.analyze_content(content, notion_prompt_with_type)
+                if result and result.get("valuable") and result.get("type") == "notion":
+                    return result
         
         # 都不符合
         return {"valuable": False, "type": None}

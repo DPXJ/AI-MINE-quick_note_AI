@@ -98,8 +98,11 @@ class QuickNoteApp(QObject):
                 max_length=config.clipboard_max_length
             )
             
+            # 检查总开关（从ai_rules读取）
+            clipboard_monitor_enabled = config.config.get('ai_rules', {}).get('clipboard_monitor', True)
+            
             # 如果配置启用，则启动剪切板监控
-            if config.clipboard_enabled:
+            if config.clipboard_enabled and clipboard_monitor_enabled:
                 self.clipboard_monitor.start()
             
             logger.info("所有组件初始化完成")
@@ -119,6 +122,7 @@ class QuickNoteApp(QObject):
         self.tray_icon.quit_triggered.connect(self._quit_app)
         self.tray_icon.restart_triggered.connect(self._restart_app)
         self.tray_icon.clipboard_toggled.connect(self._on_clipboard_toggled)
+        self.tray_icon.clipboard_history_triggered.connect(self._show_clipboard_history)
         
         # 设置保存后重新初始化
         if self.settings_dialog:
@@ -133,9 +137,20 @@ class QuickNoteApp(QObject):
         """显示设置界面"""
         logger.info("显示设置界面")
         if not self.settings_dialog:
-            self.settings_dialog = SettingsDialog(config)
+            # QDialog的parent应该是QWidget或None，不能是QApplication
+            self.settings_dialog = SettingsDialog(config, parent=None)
             self.settings_dialog.settings_saved.connect(self._reload_config)
+            # 设置主程序引用，用于访问剪切板历史
+            self.settings_dialog.main_app = self
         self.settings_dialog.exec_()
+    
+    def _show_clipboard_history(self):
+        """显示剪切板历史"""
+        logger.info("显示剪切板历史")
+        from src.gui.clipboard_history import ClipboardHistoryDialog
+        
+        history_dialog = ClipboardHistoryDialog(self, parent=None)
+        history_dialog.exec_()
     
     def _reload_config(self):
         """重新加载配置（设置保存后）"""
@@ -149,6 +164,15 @@ class QuickNoteApp(QObject):
         
         # 重新加载YAML配置
         new_config.config = new_config._load_config()
+        
+        # 更新剪切板监控状态（根据总开关）
+        clipboard_monitor_enabled = new_config.config.get('ai_rules', {}).get('clipboard_monitor', True)
+        if clipboard_monitor_enabled and new_config.clipboard_enabled:
+            if not self.clipboard_monitor.enabled:
+                self.clipboard_monitor.start()
+        else:
+            if self.clipboard_monitor.enabled:
+                self.clipboard_monitor.stop()
         
         # 重新初始化API
         try:
