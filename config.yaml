@@ -1,0 +1,87 @@
+app:
+  name: QuickNote AI
+  version: 1.0.0
+hotkeys:
+  quick_input: ctrl+shift+alt+p
+  toggle_clipboard: ctrl+shift+c
+clipboard:
+  enabled: true
+  check_interval: 1.0
+  min_length: 10
+  max_length: 5000
+ai_rules:
+  flomo:
+    keywords:
+    - 金句
+    - 方法论
+    - 产品
+    - AI
+    - 设计
+    - 思考
+    prompt: '你是一个内容分类助手。请判断以下内容是否有价值，以及应该发送到哪里。
+
+
+      内容类型定义：
+
+      - 金句：深刻的见解、启发性的语句
+
+      - 产品知识：产品设计、用户体验相关
+
+      - AI知识：人工智能技术、趋势、应用
+
+      - 方法论：可复用的思维框架和方法
+
+
+      如果内容符合以上任一类型，返回JSON：
+
+      {{"valuable": true, "type": "flomo", "category": "金句|产品|AI|方法论", "tags": ["标签1",
+      "标签2"]}}
+
+
+      如果不符合，返回：
+
+      {{"valuable": false}}
+
+
+      待分析内容：
+
+      {content}
+
+      '
+  notion:
+    keywords:
+    - 需要
+    - 要做
+    - 计划
+    - 想法
+    - 灵感
+    prompt: '你是一个任务识别助手。请判断以下内容是否包含任务、待办或灵感。
+
+
+      如果是任务/待办/灵感，返回JSON：
+
+      {{"valuable": true, "type": "notion", "title": "提取的标题", "priority": "高|中|低"}}
+
+
+      如果不是，返回：
+
+      {{"valuable": false}}
+
+
+      待分析内容：
+
+      {content}
+
+      '
+ui:
+  quick_input:
+    width: 800
+    height: 300
+    opacity: 0.95
+    always_on_top: true
+    placeholder: 输入你的灵感... (Enter发送，Esc取消)
+  theme:
+    background: '#1e1e1e'
+    foreground: '#ffffff'
+    accent: '#007acc'
+    border: '#3c3c3c'
