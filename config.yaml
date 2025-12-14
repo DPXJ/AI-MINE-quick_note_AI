@@ -2,7 +2,7 @@ app:
   name: QuickNote AI
   version: 1.0.0
 hotkeys:
-  quick_input: ctrl+shift+alt+p
+  quick_input: ctrl+shift+space
   toggle_clipboard: ctrl+shift+c
 clipboard:
   enabled: true

@@ -2,6 +2,8 @@
 from pynput import keyboard
 from typing import Callable, Dict
 from loguru import logger
+import threading
+import time
 
 
 class HotkeyListener:
@@ -12,6 +14,12 @@ class HotkeyListener:
         self.listener = None
         self.hotkeys: Dict[str, Callable] = {}
         self.current_keys = set()
+        self.is_running = False
+        self.watchdog_thread = None
+        self.stop_watchdog = False
+        self.last_activity_time = None  # 最后一次按键活动时间
+        self.last_check_time = None  # 最后一次看门狗检查时间
+        self.restart_count = 0  # 重启次数统计
         logger.info("快捷键监听器已初始化")
     
     def register(self, hotkey: str, callback: Callable):
@@ -29,23 +37,132 @@ class HotkeyListener:
     
     def start(self):
         """启动监听"""
-        if self.listener:
+        if self.is_running:
             logger.warning("快捷键监听已经在运行")
             return
         
-        self.listener = keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release
-        )
-        self.listener.start()
-        logger.info("快捷键监听已启动")
+        self.is_running = True
+        self.stop_watchdog = False
+        self._start_listener()
+        
+        # 启动看门狗线程，监控监听器状态
+        self.watchdog_thread = threading.Thread(target=self._watchdog, daemon=True)
+        self.watchdog_thread.start()
+        logger.info("快捷键监听已启动（含看门狗）")
     
     def stop(self):
         """停止监听"""
+        self.is_running = False
+        self.stop_watchdog = True
+        
         if self.listener:
-            self.listener.stop()
+            try:
+                self.listener.stop()
+            except:
+                pass
             self.listener = None
-            logger.info("快捷键监听已停止")
+        
+        logger.info("快捷键监听已停止")
+    
+    def _start_listener(self):
+        """内部方法：启动监听器"""
+        try:
+            # 完全停止并清理旧监听器
+            if self.listener:
+                try:
+                    self.listener.stop()
+                    self.listener.join(timeout=1.0)  # 等待线程结束，最多1秒
+                except Exception as e:
+                    logger.warning(f"停止旧监听器时出错: {e}")
+                finally:
+                    self.listener = None
+            
+            # 重置状态
+            self.current_keys.clear()
+            
+            # suppress=False 确保异常不会终止监听线程
+            self.listener = keyboard.Listener(
+                on_press=self._on_press,
+                on_release=self._on_release,
+                suppress=False
+            )
+            self.listener.start()
+            
+            # 等待一小段时间确保监听器真正启动
+            time.sleep(0.2)
+            
+            # 验证是否成功启动
+            if self.listener.is_alive():
+                self.last_activity_time = time.time()  # 初始化活动时间
+                logger.info("快捷键监听器已启动并验证成功")
+            else:
+                logger.error("快捷键监听器启动失败，线程未存活")
+                raise RuntimeError("监听器线程启动失败")
+                
+        except Exception as e:
+            logger.error(f"启动快捷键监听器失败: {e}", exc_info=True)
+            self.listener = None
+            raise
+    
+    def _watchdog(self):
+        """看门狗线程：监控监听器是否存活，如果死掉则自动重启"""
+        logger.info("快捷键看门狗已启动")
+        self.last_check_time = time.time()
+        
+        while not self.stop_watchdog and self.is_running:
+            try:
+                time.sleep(5)  # 每5秒检查一次（缩短间隔）
+                current_time = time.time()
+                self.last_check_time = current_time
+                
+                # 检查1：监听器线程是否存活
+                listener_dead = False
+                if self.listener:
+                    if not self.listener.is_alive():
+                        logger.warning("检测到快捷键监听器线程已停止，正在重启...")
+                        listener_dead = True
+                else:
+                    logger.warning("监听器对象丢失，正在重新创建...")
+                    listener_dead = True
+                
+                # 检查2：心跳检测 - 如果超过60秒没有按键活动，认为监听器失效
+                if not listener_dead and self.last_activity_time:
+                    time_since_activity = current_time - self.last_activity_time
+                    if time_since_activity > 60:  # 60秒无活动
+                        logger.warning(f"检测到监听器可能失效（{int(time_since_activity)}秒无按键活动），强制重启...")
+                        listener_dead = True
+                
+                # 如果需要重启
+                if listener_dead:
+                    self.restart_count += 1
+                    logger.info(f"开始第 {self.restart_count} 次重启...")
+                    
+                    # 完全停止旧监听器
+                    if self.listener:
+                        try:
+                            self.listener.stop()
+                        except:
+                            pass
+                        self.listener = None
+                    
+                    # 等待一小段时间确保完全停止
+                    time.sleep(0.5)
+                    
+                    # 重新启动
+                    self._start_listener()
+                    self.last_activity_time = time.time()  # 重置活动时间
+                    logger.info(f"快捷键监听器已重启（第 {self.restart_count} 次）")
+                else:
+                    # 正常状态，记录日志（每30秒一次，避免日志过多）
+                    if self.last_activity_time:
+                        time_since_activity = current_time - self.last_activity_time
+                        if int(time_since_activity) % 30 == 0 and time_since_activity > 0:
+                            logger.debug(f"监听器正常，距离上次活动 {int(time_since_activity)} 秒")
+                    
+            except Exception as e:
+                logger.error(f"看门狗检查异常: {e}", exc_info=True)
+        
+        logger.info("快捷键看门狗已停止")
     
     def _normalize_hotkey(self, hotkey: str) -> str:
         """标准化快捷键格式"""
@@ -95,9 +212,12 @@ class HotkeyListener:
     def _on_press(self, key):
         """按键按下事件"""
         try:
+            # 更新活动时间（心跳）
+            self.last_activity_time = time.time()
+            
             key_name = self._get_key_name(key)
             if not key_name:
-                return
+                return True  # 返回 True 继续监听
             
             # 添加到当前按键集合
             self.current_keys.add(key_name)
@@ -106,20 +226,50 @@ class HotkeyListener:
             self._check_hotkeys()
             
         except Exception as e:
-            logger.error(f"按键处理异常: {e}")
+            logger.error(f"按键处理异常: {e}", exc_info=True)
+        
+        return True  # 始终返回 True，确保监听继续
     
     def _on_release(self, key):
         """按键释放事件"""
         try:
             key_name = self._get_key_name(key)
             if not key_name:
-                return
+                return True  # 返回 True 继续监听
             
             # 从当前按键集合移除
             self.current_keys.discard(key_name)
             
         except Exception as e:
-            logger.error(f"按键释放处理异常: {e}")
+            logger.error(f"按键释放处理异常: {e}", exc_info=True)
+        
+        return True  # 始终返回 True，确保监听继续
+    
+    def is_alive(self) -> bool:
+        """检查监听器是否存活"""
+        return (
+            self.is_running and 
+            self.listener is not None and 
+            self.listener.is_alive()
+        )
+    
+    def get_status(self) -> dict:
+        """获取监听器状态信息"""
+        current_time = time.time()
+        time_since_activity = None
+        if self.last_activity_time:
+            time_since_activity = current_time - self.last_activity_time
+        
+        return {
+            'is_running': self.is_running,
+            'listener_exists': self.listener is not None,
+            'listener_alive': self.listener.is_alive() if self.listener else False,
+            'watchdog_running': self.watchdog_thread.is_alive() if self.watchdog_thread else False,
+            'registered_hotkeys': list(self.hotkeys.keys()),
+            'restart_count': self.restart_count,
+            'last_activity_seconds_ago': int(time_since_activity) if time_since_activity else None,
+            'last_check_seconds_ago': int(current_time - self.last_check_time) if self.last_check_time else None
+        }
     
     def _check_hotkeys(self):
         """检查是否匹配快捷键"""
@@ -155,7 +305,15 @@ class HotkeyListener:
             logger.info(f"触发快捷键: {current_combo}")
             callback = self.hotkeys[current_combo]
             try:
-                callback()
+                # 在新线程中执行回调，避免阻塞监听线程
+                threading.Thread(target=self._safe_callback, args=(callback,), daemon=True).start()
             except Exception as e:
-                logger.error(f"快捷键回调执行失败: {e}")
+                logger.error(f"启动快捷键回调线程失败: {e}", exc_info=True)
+    
+    def _safe_callback(self, callback: Callable):
+        """安全执行回调函数"""
+        try:
+            callback()
+        except Exception as e:
+            logger.error(f"快捷键回调执行失败: {e}", exc_info=True)
 

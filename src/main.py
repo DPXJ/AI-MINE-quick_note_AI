@@ -35,6 +35,10 @@ from src.integrations.flomo_api import FlomoAPI
 class QuickNoteApp(QObject):
     """主应用程序类"""
     
+    # 定义信号（用于线程安全的 GUI 操作）
+    show_quick_input_signal = pyqtSignal()
+    toggle_clipboard_signal = pyqtSignal()
+    
     def __init__(self, app: QApplication):
         """初始化应用"""
         super().__init__()
@@ -54,6 +58,9 @@ class QuickNoteApp(QObject):
         self._init_components()
         self._connect_signals()
         
+        # 启动定期状态检查（每2分钟检查一次快捷键状态）
+        self._start_status_check()
+        
         logger.info("QuickNote AI 启动完成")
     
     def _init_components(self):
@@ -67,13 +74,14 @@ class QuickNoteApp(QObject):
             
             # 快捷键监听器
             self.hotkey_listener = HotkeyListener()
+            # 使用信号发射，确保 GUI 操作在主线程执行
             self.hotkey_listener.register(
                 config.hotkey_quick_input,
-                self._show_quick_input
+                lambda: self.show_quick_input_signal.emit()
             )
             self.hotkey_listener.register(
                 config.hotkey_toggle_clipboard,
-                self._toggle_clipboard
+                lambda: self.toggle_clipboard_signal.emit()
             )
             self.hotkey_listener.start()
             
@@ -124,9 +132,46 @@ class QuickNoteApp(QObject):
         self.tray_icon.clipboard_toggled.connect(self._on_clipboard_toggled)
         self.tray_icon.clipboard_history_triggered.connect(self._show_clipboard_history)
         
+        # 线程安全的快捷键信号（从 pynput 线程到主线程）
+        self.show_quick_input_signal.connect(self._show_quick_input)
+        self.toggle_clipboard_signal.connect(self._toggle_clipboard)
+        
         # 设置保存后重新初始化
         if self.settings_dialog:
             self.settings_dialog.settings_saved.connect(self._reload_config)
+    
+    def _start_status_check(self):
+        """启动定期状态检查"""
+        from PyQt5.QtCore import QTimer
+        
+        def check_status():
+            """检查快捷键监听器状态"""
+            try:
+                status = self.hotkey_listener.get_status()
+                
+                # 如果监听器不存活，记录警告
+                if not status['listener_alive']:
+                    logger.warning(f"快捷键监听器状态异常: {status}")
+                    # 尝试重启
+                    if self.hotkey_listener.is_running:
+                        logger.info("尝试手动重启快捷键监听器...")
+                        self.hotkey_listener.stop()
+                        self.hotkey_listener.start()
+                else:
+                    # 正常状态，每10分钟记录一次详细信息（避免日志过多）
+                    import time
+                    if status.get('last_activity_seconds_ago') is not None:
+                        if status['last_activity_seconds_ago'] % 600 < 120:  # 每10分钟记录一次
+                            logger.debug(f"快捷键监听器状态正常: 重启次数={status['restart_count']}, "
+                                       f"距离上次活动={status['last_activity_seconds_ago']}秒")
+            except Exception as e:
+                logger.error(f"状态检查异常: {e}", exc_info=True)
+        
+        # 每2分钟检查一次
+        self.status_timer = QTimer()
+        self.status_timer.timeout.connect(check_status)
+        self.status_timer.start(120000)  # 120秒 = 2分钟
+        logger.info("快捷键状态定期检查已启动（每2分钟）")
     
     def _show_quick_input(self):
         """显示快速输入窗口"""

@@ -58,10 +58,11 @@ class QuickInputWindow(QWidget):
         # 窗口属性
         self.setWindowTitle("QuickNote - 快速输入")
         
-        # 窗口标志：无边框、非置顶、普通窗口（可最小化）
+        # 窗口标志：无边框、普通窗口（可最小化）、保持在上层但不是置顶
         self.setWindowFlags(
             Qt.FramelessWindowHint |
-            Qt.Window  # 普通窗口，可以最小化
+            Qt.Window |  # 普通窗口，可以最小化
+            Qt.WindowStaysOnTopHint  # 保持在顶层，确保快捷键调用时可见
         )
         
         # 窗口大小（固定物理像素）
@@ -379,12 +380,23 @@ class QuickInputWindow(QWidget):
         y = (screen.height() - self.height()) // 2
         
         self.move(x, y)
+        
+        # 确保窗口显示并获取焦点
         self.show()
         self.raise_()
         self.activateWindow()
         
-        # 聚焦到输入框
-        QTimer.singleShot(100, lambda: self.text_edit.setFocus())
+        # 在 Windows 上强制激活窗口
+        try:
+            import ctypes
+            hwnd = int(self.winId())
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except:
+            pass
+        
+        # 延迟聚焦到输入框，确保窗口已完全激活
+        QTimer.singleShot(50, lambda: self.text_edit.setFocus())
+        QTimer.singleShot(100, lambda: self.text_edit.setFocus())  # 双重保险
         
         logger.info("快速输入窗口已显示")
     
