@@ -1,5 +1,6 @@
 """配置管理模块"""
 import os
+import sys
 import yaml
 from pathlib import Path
 from typing import Dict, Any
@@ -12,7 +13,14 @@ class Config:
     
     def __init__(self):
         # 获取项目根目录
-        self.root_dir = Path(__file__).parent.parent.parent
+        # 如果是打包后的EXE，使用EXE所在目录；否则使用项目根目录
+        if getattr(sys, 'frozen', False):
+            # 打包后的EXE模式：使用EXE所在目录
+            self.root_dir = Path(sys.executable).parent
+        else:
+            # 开发模式：使用项目根目录
+            self.root_dir = Path(__file__).parent.parent.parent
+        
         self.config_file = self.root_dir / "config.yaml"
         self.env_file = self.root_dir / ".env"
         

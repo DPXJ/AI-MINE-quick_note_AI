@@ -28,6 +28,8 @@ class TrayIcon(QObject):
         self.app = app
         self.tray_icon = None
         self.clipboard_enabled = True
+        self._icon = None  # 缓存图标
+        self._menu = None  # 缓存菜单
         self._init_tray()
         logger.info("系统托盘已初始化")
     
@@ -43,11 +45,27 @@ class TrayIcon(QObject):
         # 设置提示文本
         self.tray_icon.setToolTip("QuickNote AI - 智能笔记助手")
         
-        # 创建菜单
+        # 创建菜单（延迟创建，避免初始化慢）
+        self._create_menu()
+        
+        # 设置菜单
+        self.tray_icon.setContextMenu(self._menu)
+        
+        # 双击事件
+        self.tray_icon.activated.connect(self._on_activated)
+        
+        # 显示托盘图标
+        self.tray_icon.show()
+    
+    def _create_menu(self):
+        """创建右键菜单（优化：只创建一次，避免重复创建导致慢）"""
+        if self._menu is not None:
+            return self._menu
+        
         menu = QMenu()
         
         # 快速输入
-        quick_input_action = QAction("📝 快速输入 (Ctrl+Shift+Space)", menu)
+        quick_input_action = QAction("📝 快速输入", menu)
         quick_input_action.triggered.connect(self.quick_input_triggered.emit)
         menu.addAction(quick_input_action)
         
@@ -89,17 +107,15 @@ class TrayIcon(QObject):
         quit_action.triggered.connect(self._quit_app)
         menu.addAction(quit_action)
         
-        # 设置菜单
-        self.tray_icon.setContextMenu(menu)
-        
-        # 双击事件
-        self.tray_icon.activated.connect(self._on_activated)
-        
-        # 显示托盘图标
-        self.tray_icon.show()
+        # 缓存菜单
+        self._menu = menu
+        return menu
     
     def _create_icon(self):
-        """创建托盘图标"""
+        """创建托盘图标（优化：只创建一次，缓存结果）"""
+        if self._icon is not None:
+            return self._icon
+        
         from PyQt5.QtGui import QPixmap, QPainter, QColor, QFont
         from PyQt5.QtCore import Qt
         
@@ -123,7 +139,9 @@ class TrayIcon(QObject):
         
         painter.end()
         
-        return QIcon(pixmap)
+        icon = QIcon(pixmap)
+        self._icon = icon  # 缓存图标
+        return icon
     
     def _on_activated(self, reason):
         """托盘图标激活事件"""

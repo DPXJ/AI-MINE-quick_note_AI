@@ -18,7 +18,9 @@ class HotkeyListener:
         self.watchdog_thread = None
         self.stop_watchdog = False
         self.last_activity_time = None  # 最后一次按键活动时间
+        self.last_hotkey_trigger_time = None  # 最后一次快捷键触发时间（关键！）
         self.last_check_time = None  # 最后一次看门狗检查时间
+        self.start_time = None  # 监听器启动时间
         self.restart_count = 0  # 重启次数统计
         logger.info("快捷键监听器已初始化")
     
@@ -93,7 +95,11 @@ class HotkeyListener:
             
             # 验证是否成功启动
             if self.listener.is_alive():
-                self.last_activity_time = time.time()  # 初始化活动时间
+                current_time = time.time()
+                self.start_time = current_time  # 记录启动时间
+                self.last_activity_time = current_time  # 初始化活动时间
+                # 注意：last_hotkey_trigger_time 初始为 None，只有真正触发快捷键后才设置
+                # 这样看门狗可以区分"从未触发"和"长时间未触发"
                 logger.info("快捷键监听器已启动并验证成功")
             else:
                 logger.error("快捷键监听器启动失败，线程未存活")
@@ -125,7 +131,21 @@ class HotkeyListener:
                     logger.warning("监听器对象丢失，正在重新创建...")
                     listener_dead = True
                 
-                # 检查2：心跳检测 - 如果超过60秒没有按键活动，认为监听器失效
+                # 检查2：快捷键触发检测（关键！）
+                # 情况A：如果从未触发过快捷键，且启动超过2分钟，强制重启（可能是监听器启动就失效）
+                if not listener_dead and self.last_hotkey_trigger_time is None and self.start_time:
+                    time_since_start = current_time - self.start_time
+                    if time_since_start > 120:  # 2分钟从未触发过快捷键
+                        logger.warning(f"检测到监听器可能失效（启动{int(time_since_start)}秒从未触发快捷键），强制重启...")
+                        listener_dead = True
+                # 情况B：如果之前触发过，但超过3分钟没有触发，认为失效
+                elif not listener_dead and self.last_hotkey_trigger_time is not None:
+                    time_since_hotkey = current_time - self.last_hotkey_trigger_time
+                    if time_since_hotkey > 180:  # 3分钟无快捷键触发
+                        logger.warning(f"检测到监听器可能失效（{int(time_since_hotkey)}秒无快捷键触发），强制重启...")
+                        listener_dead = True
+                
+                # 检查3：心跳检测 - 如果超过60秒没有按键活动，也认为监听器失效（备用检测）
                 if not listener_dead and self.last_activity_time:
                     time_since_activity = current_time - self.last_activity_time
                     if time_since_activity > 60:  # 60秒无活动
@@ -150,11 +170,17 @@ class HotkeyListener:
                     
                     # 重新启动
                     self._start_listener()
+                    # start_time 已在 _start_listener 中设置
                     self.last_activity_time = time.time()  # 重置活动时间
+                    self.last_hotkey_trigger_time = None  # 重置快捷键触发时间（等待首次触发）
                     logger.info(f"快捷键监听器已重启（第 {self.restart_count} 次）")
                 else:
                     # 正常状态，记录日志（每30秒一次，避免日志过多）
-                    if self.last_activity_time:
+                    if self.last_hotkey_trigger_time:
+                        time_since_hotkey = current_time - self.last_hotkey_trigger_time
+                        if int(time_since_hotkey) % 30 == 0 and time_since_hotkey > 0:
+                            logger.debug(f"监听器正常，距离上次快捷键触发 {int(time_since_hotkey)} 秒")
+                    elif self.last_activity_time:
                         time_since_activity = current_time - self.last_activity_time
                         if int(time_since_activity) % 30 == 0 and time_since_activity > 0:
                             logger.debug(f"监听器正常，距离上次活动 {int(time_since_activity)} 秒")
@@ -198,15 +224,28 @@ class HotkeyListener:
     def _get_key_name(self, key) -> str:
         """获取按键名称"""
         try:
-            # 特殊键
+            # 特殊键（如 Key.space, Key.ctrl 等）
             if hasattr(key, 'name'):
-                return key.name.lower()
+                key_name = key.name.lower()
+                # 处理 pynput 的特殊键名称
+                if key_name == 'space':
+                    return 'space'
+                return key_name
             # 字符键
             elif hasattr(key, 'char') and key.char:
-                return key.char.lower()
+                char = key.char
+                # 空格字符特殊处理
+                if char == ' ':
+                    return 'space'
+                return char.lower()
             else:
-                return str(key).lower()
-        except:
+                # 尝试从字符串表示中提取
+                key_str = str(key).lower()
+                if 'space' in key_str:
+                    return 'space'
+                return key_str
+        except Exception as e:
+            logger.debug(f"获取按键名称失败: {e}, key={key}")
             return ""
     
     def _on_press(self, key):
@@ -221,6 +260,10 @@ class HotkeyListener:
             
             # 添加到当前按键集合
             self.current_keys.add(key_name)
+            
+            # 调试：记录修饰键的按下（帮助诊断问题）
+            if key_name in ['ctrl', 'control', 'ctrl_l', 'ctrl_r', 'shift', 'shift_l', 'shift_r']:
+                logger.debug(f"检测到修饰键按下: {key_name}, 当前按键集合: {self.current_keys}")
             
             # 检查是否匹配已注册的快捷键
             self._check_hotkeys()
@@ -237,8 +280,18 @@ class HotkeyListener:
             if not key_name:
                 return True  # 返回 True 继续监听
             
-            # 从当前按键集合移除
-            self.current_keys.discard(key_name)
+            # 延迟清空按键集合，确保快捷键匹配有机会完成
+            # 使用线程延迟，避免阻塞
+            def delayed_remove():
+                time.sleep(0.1)  # 延迟100ms
+                self.current_keys.discard(key_name)
+            
+            # 对于修饰键，立即移除（因为它们通常按得比较久）
+            if key_name in ['ctrl', 'control', 'ctrl_l', 'ctrl_r', 'shift', 'shift_l', 'shift_r', 'alt', 'cmd']:
+                self.current_keys.discard(key_name)
+            else:
+                # 对于普通键，延迟移除，给快捷键匹配留时间
+                threading.Thread(target=delayed_remove, daemon=True).start()
             
         except Exception as e:
             logger.error(f"按键释放处理异常: {e}", exc_info=True)
@@ -260,6 +313,10 @@ class HotkeyListener:
         if self.last_activity_time:
             time_since_activity = current_time - self.last_activity_time
         
+        time_since_hotkey = None
+        if self.last_hotkey_trigger_time is not None:
+            time_since_hotkey = current_time - self.last_hotkey_trigger_time
+        
         return {
             'is_running': self.is_running,
             'listener_exists': self.listener is not None,
@@ -268,6 +325,7 @@ class HotkeyListener:
             'registered_hotkeys': list(self.hotkeys.keys()),
             'restart_count': self.restart_count,
             'last_activity_seconds_ago': int(time_since_activity) if time_since_activity else None,
+            'last_hotkey_trigger_seconds_ago': int(time_since_hotkey) if time_since_hotkey is not None else None,
             'last_check_seconds_ago': int(current_time - self.last_check_time) if self.last_check_time else None
         }
     
@@ -300,9 +358,15 @@ class HotkeyListener:
         # 构建当前组合
         current_combo = '+'.join(modifiers + keys)
         
+        # 调试日志：记录按键组合（仅在调试模式下）
+        if len(modifiers) >= 2 and len(keys) >= 1:  # 只记录可能的快捷键组合
+            logger.debug(f"检测到按键组合: {current_combo}, 已注册快捷键: {list(self.hotkeys.keys())}")
+        
         # 检查是否匹配
         if current_combo in self.hotkeys:
             logger.info(f"触发快捷键: {current_combo}")
+            # 更新快捷键触发时间（关键！用于检测监听器是否真正工作）
+            self.last_hotkey_trigger_time = time.time()
             callback = self.hotkeys[current_combo]
             try:
                 # 在新线程中执行回调，避免阻塞监听线程

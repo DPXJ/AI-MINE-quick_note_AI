@@ -12,9 +12,17 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QObject, pyqtSignal, QThread, Qt
 from loguru import logger
 
-# 配置日志
+# 确定根目录（打包后使用EXE所在目录，开发模式使用项目根目录）
+if getattr(sys, 'frozen', False):
+    root_dir = Path(sys.executable).parent
+else:
+    root_dir = Path(__file__).parent.parent
+
+# 配置日志（日志文件放在根目录下的logs文件夹）
+logs_dir = root_dir / "logs"
+logs_dir.mkdir(exist_ok=True)
 logger.add(
-    "logs/quicknote_{time}.log",
+    str(logs_dir / "quicknote_{time}.log"),
     rotation="10 MB",
     retention="7 days",
     encoding="utf-8",
@@ -160,10 +168,16 @@ class QuickNoteApp(QObject):
                 else:
                     # 正常状态，每10分钟记录一次详细信息（避免日志过多）
                     import time
-                    if status.get('last_activity_seconds_ago') is not None:
+                    # 优先显示快捷键触发时间（更关键）
+                    if status.get('last_hotkey_trigger_seconds_ago') is not None:
+                        if status['last_hotkey_trigger_seconds_ago'] % 600 < 120:  # 每10分钟记录一次
+                            logger.debug(f"快捷键监听器状态正常: 重启次数={status['restart_count']}, "
+                                       f"距离上次快捷键触发={status['last_hotkey_trigger_seconds_ago']}秒")
+                    elif status.get('last_activity_seconds_ago') is not None:
                         if status['last_activity_seconds_ago'] % 600 < 120:  # 每10分钟记录一次
                             logger.debug(f"快捷键监听器状态正常: 重启次数={status['restart_count']}, "
-                                       f"距离上次活动={status['last_activity_seconds_ago']}秒")
+                                       f"距离上次活动={status['last_activity_seconds_ago']}秒, "
+                                       f"尚未触发快捷键")
             except Exception as e:
                 logger.error(f"状态检查异常: {e}", exc_info=True)
         
@@ -370,29 +384,63 @@ class QuickNoteApp(QObject):
         
         logger.info("正在重启应用...")
         
-        # 获取当前脚本路径
-        current_dir = Path(__file__).parent.parent
-        script_path = current_dir / "src" / "main.py"
-        
-        # 获取Python解释器路径
-        python_exe = sys.executable
-        
         # 停止所有服务
-        self.clipboard_monitor.stop()
-        self.hotkey_listener.stop()
+        try:
+            self.clipboard_monitor.stop()
+            self.hotkey_listener.stop()
+        except:
+            pass
         
         # 显示重启提示
         self.tray_icon.show_message("正在重启", "QuickNote AI 正在重启...")
         
-        # 延迟一点再启动新进程，确保当前进程完全退出
+        # 导入QTimer
         from PyQt5.QtCore import QTimer
-        QTimer.singleShot(500, lambda: self._do_restart(python_exe, script_path, current_dir))
+        
+        # 判断是打包后的EXE还是开发模式
+        if getattr(sys, 'frozen', False):
+            # 打包后的EXE模式
+            exe_path = sys.executable  # EXE的完整路径
+            exe_dir = Path(exe_path).parent
+            
+            logger.info(f"EXE模式重启，路径: {exe_path}")
+            
+            # 延迟启动新进程
+            QTimer.singleShot(300, lambda: self._do_restart_exe(exe_path, exe_dir))
+        else:
+            # 开发模式（Python脚本）
+            current_dir = Path(__file__).parent.parent
+            script_path = current_dir / "src" / "main.py"
+            python_exe = sys.executable
+            
+            logger.info(f"开发模式重启，脚本: {script_path}")
+            
+            # 延迟启动新进程
+            QTimer.singleShot(300, lambda: self._do_restart_script(python_exe, script_path, current_dir))
         
         # 退出当前应用
-        self.app.quit()
+        QTimer.singleShot(500, lambda: self.app.quit())
     
-    def _do_restart(self, python_exe, script_path, current_dir):
-        """执行重启操作"""
+    def _do_restart_exe(self, exe_path, exe_dir):
+        """执行EXE重启操作"""
+        import subprocess
+        import os
+        
+        try:
+            # 启动新的EXE进程
+            subprocess.Popen(
+                [str(exe_path)],
+                cwd=str(exe_dir),
+                creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0,
+                shell=False
+            )
+            logger.info("新EXE进程已启动")
+        except Exception as e:
+            logger.error(f"重启EXE失败: {e}", exc_info=True)
+            self.tray_icon.show_message("重启失败", f"无法启动新进程: {str(e)}")
+    
+    def _do_restart_script(self, python_exe, script_path, current_dir):
+        """执行脚本重启操作（开发模式）"""
         import subprocess
         import os
         
@@ -402,13 +450,13 @@ class QuickNoteApp(QObject):
             
             # 启动新进程
             subprocess.Popen(
-                [python_exe, "-c", "import sys; sys.path.insert(0, '.'); from src.main import main; main()"],
+                [python_exe, str(script_path)],
                 cwd=str(current_dir),
                 creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
             )
-            logger.info("新进程已启动")
+            logger.info("新Python进程已启动")
         except Exception as e:
-            logger.error(f"重启失败: {e}")
+            logger.error(f"重启脚本失败: {e}", exc_info=True)
     
     def _quit_app(self):
         """退出应用"""
