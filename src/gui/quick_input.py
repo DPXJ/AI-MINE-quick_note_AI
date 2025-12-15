@@ -236,6 +236,33 @@ class QuickInputWindow(QWidget):
         self.flomo_tab_btn.clicked.connect(lambda: self._switch_platform("flomo"))
         tab_layout.addWidget(self.flomo_tab_btn)
         
+        self.ticktick_tab_btn = QPushButton("✅ 滴答清单")
+        self.ticktick_tab_btn.setCheckable(True)
+        self.ticktick_tab_btn.setChecked(False)
+        self.ticktick_tab_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {accent_color};
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: #005a9e;
+            }}
+            QPushButton:checked {{
+                background: {accent_color};
+            }}
+            QPushButton:!checked {{
+                background: #e0e0e0;
+                color: #666;
+            }}
+        """)
+        self.ticktick_tab_btn.clicked.connect(lambda: self._switch_platform("ticktick"))
+        tab_layout.addWidget(self.ticktick_tab_btn)
+        
         # 标签输入（仅Flomo显示）
         self.tags_label = QLabel("标签（用空格分隔）：")
         self.tags_label.setStyleSheet("font-size: 13px; color: #666;")
@@ -258,8 +285,31 @@ class QuickInputWindow(QWidget):
         """)
         self.tags_input.setVisible(False)
         
+        # 清单名称输入（仅TickTick显示）
+        self.list_name_label = QLabel("清单名称（可选）：")
+        self.list_name_label.setStyleSheet("font-size: 13px; color: #666;")
+        self.list_name_label.setVisible(False)
+        
+        self.list_name_input = QLineEdit()
+        self.list_name_input.setPlaceholderText("例如：工作、生活（不填则使用默认清单）")
+        self.list_name_input.setStyleSheet(f"""
+            QLineEdit {{
+                background: white;
+                border: 2px solid {border_color};
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 14px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {accent_color};
+            }}
+        """)
+        self.list_name_input.setVisible(False)
+        
         tab_layout.addWidget(self.tags_label)
         tab_layout.addWidget(self.tags_input, stretch=1)
+        tab_layout.addWidget(self.list_name_label)
+        tab_layout.addWidget(self.list_name_input, stretch=1)
         tab_layout.addStretch()
         
         content_layout.addLayout(tab_layout)
@@ -415,42 +465,63 @@ class QuickInputWindow(QWidget):
         if platform == "notion":
             self.notion_tab_btn.setChecked(True)
             self.flomo_tab_btn.setChecked(False)
+            self.ticktick_tab_btn.setChecked(False)
             self.tags_label.setVisible(False)
             self.tags_input.setVisible(False)
+            self.list_name_label.setVisible(False)
+            self.list_name_input.setVisible(False)
             self.text_edit.setPlaceholderText("输入你的灵感...")
             logger.info("切换到Notion模式")
-        else:  # flomo
+        elif platform == "flomo":
             self.notion_tab_btn.setChecked(False)
             self.flomo_tab_btn.setChecked(True)
+            self.ticktick_tab_btn.setChecked(False)
             self.tags_label.setVisible(True)
             self.tags_input.setVisible(True)
+            self.list_name_label.setVisible(False)
+            self.list_name_input.setVisible(False)
             # 如果标签为空，设置为默认值
             if not self.tags_input.text().strip():
                 self.tags_input.setText("闪念")
             self.text_edit.setPlaceholderText("输入金句、知识或方法论...")
             logger.info("切换到Flomo模式")
+        else:  # ticktick
+            self.notion_tab_btn.setChecked(False)
+            self.flomo_tab_btn.setChecked(False)
+            self.ticktick_tab_btn.setChecked(True)
+            self.tags_label.setVisible(False)
+            self.tags_input.setVisible(False)
+            self.list_name_label.setVisible(True)
+            self.list_name_input.setVisible(True)
+            self.text_edit.setPlaceholderText("输入待办任务...")
+            logger.info("切换到滴答清单模式")
     
     def _submit_content(self):
         """提交内容"""
         content = self.text_edit.toPlainText().strip()
         
         if content:
-            # 获取标签（Flomo模式）
+            # 获取标签或额外参数
             tags = ""
             if self.target_platform == "flomo":
                 tags = self.tags_input.text().strip()
                 if not tags:
                     tags = "闪念"  # 如果没有标签，使用默认值
+            elif self.target_platform == "ticktick":
+                # TickTick 使用 tags 字段传递清单名称
+                tags = self.list_name_input.text().strip()
             
-            logger.info(f"提交内容到{self.target_platform}: {content[:50]}..., 标签: {tags}")
+            logger.info(f"提交内容到{self.target_platform}: {content[:50]}..., 标签/参数: {tags}")
             
-            # 发送信号：平台，内容，标签
+            # 发送信号：平台，内容，标签/参数
             self.content_submitted.emit(self.target_platform, content, tags)
             
             # 清空输入
             self.text_edit.clear()
             if self.target_platform == "flomo":
                 self.tags_input.setText("闪念")  # 重置为默认值
+            elif self.target_platform == "ticktick":
+                self.list_name_input.clear()  # 清空清单名称
             else:
                 self.tags_input.clear()
             self.hide()

@@ -38,6 +38,7 @@ from src.core.clipboard import ClipboardMonitor
 from src.core.ai_processor import AIProcessor
 from src.integrations.notion_api import NotionAPI
 from src.integrations.flomo_api import FlomoAPI
+from src.integrations.ticktick_api import TickTickAPI
 
 
 class QuickNoteApp(QObject):
@@ -102,6 +103,10 @@ class QuickNoteApp(QObject):
             self.flomo_api = None
             if config.flomo_api_url:
                 self.flomo_api = FlomoAPI(config.flomo_api_url)
+            
+            self.ticktick_api = None
+            if config.ticktick_webhook_url:
+                self.ticktick_api = TickTickAPI(config.ticktick_webhook_url)
             
             # AI处理器
             self.ai_processor = AIProcessor(config.ai_provider)
@@ -250,6 +255,10 @@ class QuickNoteApp(QObject):
                 self.flomo_api = FlomoAPI(new_config.flomo_api_url)
                 logger.info("Flomo API已重新初始化")
             
+            if new_config.ticktick_webhook_url:
+                self.ticktick_api = TickTickAPI(new_config.ticktick_webhook_url)
+                logger.info("TickTick API已重新初始化")
+            
             # 快捷键配置已保存到config.yaml，但需要重启才能生效
             logger.info("快捷键配置已更新，需要重启应用才能生效")
             
@@ -316,6 +325,35 @@ class QuickNoteApp(QObject):
             else:
                 self.tray_icon.show_message("保存失败", "保存到Flomo失败 ❌")
                 logger.error("保存到Flomo失败")
+                
+        elif platform == "ticktick":
+            # 保存到滴答清单（通过集简云webhook）
+            if not self.ticktick_api:
+                self.tray_icon.show_message("配置错误", "请先在设置界面配置滴答清单 Webhook")
+                logger.error("TickTick API未初始化")
+                return
+            
+            self.tray_icon.show_message("处理中", "正在保存到滴答清单...")
+            
+            # tags 参数里存的是清单名称（可选）
+            list_name = tags.strip() if tags else ""
+            
+            # 生成任务标题（取前50个字符，如果内容较长）
+            title = content[:50] + "..." if len(content) > 50 else content
+            
+            success = self.ticktick_api.add_task(
+                title=title,
+                content=content,
+                list_name=list_name
+            )
+            
+            if success:
+                list_display = f" (清单: {list_name})" if list_name else ""
+                self.tray_icon.show_message("保存成功", f"已保存到滴答清单 ✅{list_display}")
+                logger.info(f"快速输入已保存到滴答清单，清单: {list_name or '默认'}")
+            else:
+                self.tray_icon.show_message("保存失败", "保存到滴答清单失败 ❌")
+                logger.error("保存到滴答清单失败")
         else:
             logger.warning(f"未知的平台: {platform}")
     

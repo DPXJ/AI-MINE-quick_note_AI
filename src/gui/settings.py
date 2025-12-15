@@ -310,6 +310,34 @@ class SettingsDialog(QDialog):
         flomo_group.setLayout(flomo_layout)
         layout.addWidget(flomo_group)
         
+        # 滴答清单配置 - 使用自定义标题样式
+        ticktick_group = QGroupBox()
+        ticktick_group.setTitle("")
+        ticktick_layout = QVBoxLayout()
+        
+        # 自定义标题，带颜色和竖条
+        ticktick_title = QLabel("│ 滴答清单配置（通过集简云）")
+        ticktick_title.setStyleSheet("""
+            QLabel {
+                color: #007acc;
+                font-size: 15px;
+                font-weight: bold;
+                padding: 8px 0px;
+                margin-bottom: 10px;
+                margin-top: 10px;
+            }
+        """)
+        ticktick_layout.addWidget(ticktick_title)
+        
+        self.ticktick_webhook = self._create_input_row("集简云 Webhook URL:", "https://hook.jijyun.cn/...", ticktick_layout)
+        
+        ticktick_hint = QLabel("💡 需在集简云创建 Webhook → 滴答清单 的自动化流程")
+        ticktick_hint.setStyleSheet("color: #666; font-size: 14px; margin: 10px 0; padding: 10px; background: #fff3e0; border-radius: 6px;")
+        ticktick_layout.addWidget(ticktick_hint)
+        
+        ticktick_group.setLayout(ticktick_layout)
+        layout.addWidget(ticktick_group)
+        
         layout.addStretch()
         widget.setLayout(layout)
         
@@ -798,6 +826,8 @@ class SettingsDialog(QDialog):
         
         self.flomo_url.setText(self.config_obj.flomo_api_url)
         
+        self.ticktick_webhook.setText(self.config_obj.ticktick_webhook_url)
+        
         # 加载快捷键配置（使用HotkeyInput控件）
         self.hotkey_quick.setText(self.config_obj.hotkey_quick_input)
         self.hotkey_clipboard.setText(self.config_obj.hotkey_toggle_clipboard)
@@ -902,6 +932,9 @@ NOTION_DATABASE_ID={self.notion_db.text()}
 
 # Flomo配置
 FLOMO_API_URL={self.flomo_url.text()}
+
+# 滴答清单配置（通过集简云）
+TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
 """
             
             # 写入.env文件
@@ -1204,6 +1237,22 @@ FLOMO_API_URL={self.flomo_url.text()}
                     result_text += f"❌ Flomo 连接失败: {error_msg}\n"
             else:
                 result_text += "⚠️ Flomo 未配置（可选）\n"
+            
+            # 测试滴答清单连接
+            if self.ticktick_webhook.text():
+                try:
+                    from src.integrations.ticktick_api import TickTickAPI
+                    ticktick = TickTickAPI(self.ticktick_webhook.text())
+                    ticktick_ok = ticktick.test_connection()
+                    if ticktick_ok:
+                        result_text += "✅ 滴答清单 连接成功\n"
+                    else:
+                        result_text += "❌ 滴答清单 连接失败\n"
+                except Exception as e:
+                    error_msg = str(e)[:100] if len(str(e)) > 100 else str(e)
+                    result_text += f"❌ 滴答清单 连接失败: {error_msg}\n"
+            else:
+                result_text += "⚠️ 滴答清单 未配置（可选）\n"
             
             # 显示结果
             if not result_text:

@@ -109,6 +109,11 @@ class Config:
         return self.get_env("FLOMO_API_URL")
     
     @property
+    def ticktick_webhook_url(self) -> str:
+        """TickTick (via Jijiyun) Webhook URL"""
+        return self.get_env("TICKTICK_WEBHOOK_URL")
+    
+    @property
     def hotkey_quick_input(self) -> str:
         """快速输入快捷键"""
         return self.get("hotkeys.quick_input", "ctrl+shift+space")
@@ -162,6 +167,10 @@ class Config:
         # 检查Flomo配置（可选）
         if not self.flomo_api_url:
             logger.warning("未配置FLOMO_API_URL，Flomo功能将不可用")
+        
+        # 检查TickTick配置（可选）
+        if not self.ticktick_webhook_url:
+            logger.warning("未配置TICKTICK_WEBHOOK_URL，滴答清单功能将不可用（通过集简云 Webhook）")
         
         if errors:
             for error in errors:
