@@ -25,6 +25,7 @@ class NotionAPI:
         content: str, 
         title: Optional[str] = None,
         priority: str = "中",
+        status: str = "待办",
         tags: Optional[list] = None,
         ai_extract_title: bool = True
     ) -> bool:
@@ -105,7 +106,7 @@ class NotionAPI:
                 },
                 "状态": {
                     "status": {
-                        "name": "待办"
+                        "name": status
                     }
                 },
                 "优先级": {

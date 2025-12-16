@@ -304,6 +304,7 @@ class QuickNoteApp(QObject):
             success = self.notion_api.add_inspiration(
                 content,
                 priority=priority,
+                status=status,
                 tags=tags
             )
             
@@ -350,26 +351,29 @@ class QuickNoteApp(QObject):
             # 生成任务标题（取前50个字符，如果内容较长）
             title = content[:50] + "..." if len(content) > 50 else content
             
-            # AI 提取时间信息（优先从额外参数中的 reminder 字段提取，如果没有则从内容中提取）
+            # AI 提取时间信息（从内容中自动提取）
             time_info = None
             due_date = None
-            reminder_text = extra_params.get("reminder", "")
             
             if self.ai_processor:
                 try:
-                    # 如果用户在UI中输入了提醒时间，优先使用
-                    extract_text = reminder_text if reminder_text else content
-                    time_info = self.ai_processor.extract_time_info(extract_text)
-                    if time_info and time_info.get("due_date_iso"):
-                        due_date = time_info.get("due_date_iso")
-                        logger.info(f"识别到时间: {due_date} (原文: {extract_text})")
+                    # 从内容中提取时间信息
+                    time_info = self.ai_processor.extract_time_info(content)
+                    if time_info and time_info.get("datetime_ticktick"):
+                        due_date = time_info.get("datetime_ticktick")
+                        logger.info(f"识别到时间: {due_date} (原文: {content})")
                 except Exception as e:
                     logger.warning(f"时间提取失败，将不设置截止时间: {e}")
+            
+            # 构建extra参数
+            extra_dict = {}
+            if due_date:
+                extra_dict["due_date"] = due_date
             
             success = self.ticktick_api.add_task(
                 title=title,
                 content=content,
-                due_date=due_date
+                extra=extra_dict if extra_dict else None
             )
             
             if success:
@@ -407,11 +411,16 @@ class QuickNoteApp(QObject):
                 priority = result.get("priority", "中")
                 tags = result.get("tags", [])
                 
+                # 强制添加标签：AI自动同步、QuickNote AI
+                forced_tags = ["AI自动同步", "QuickNote AI"]
+                # 合并标签，去重，保持顺序（强制标签在前）
+                all_tags = forced_tags + [tag for tag in tags if tag not in forced_tags]
+                
                 success = self.notion_api.add_inspiration(
                     content,
                     title=title,
                     priority=priority,
-                    tags=tags
+                    tags=all_tags
                 )
                 
                 if success:
@@ -427,6 +436,11 @@ class QuickNoteApp(QObject):
                 tags = result.get("tags", [])
                 if category and category not in tags:
                     tags.insert(0, category)
+                
+                # 强制添加标签：AI自动同步
+                forced_tag = "AI自动同步"
+                if forced_tag not in tags:
+                    tags.append(forced_tag)
                 
                 success = self.flomo_api.add_memo(content, tags=tags)
                 

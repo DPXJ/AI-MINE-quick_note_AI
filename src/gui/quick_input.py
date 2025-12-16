@@ -1,5 +1,5 @@
 """快速输入窗口"""
-from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QComboBox
+from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QButtonGroup
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
 from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent
 from loguru import logger
@@ -14,10 +14,14 @@ class CustomTextEdit(QTextEdit):
     
     def keyPressEvent(self, event: QKeyEvent):
         """按键事件处理"""
-        # Enter: 提交（不是Ctrl+Enter）
+        # Ctrl+Enter: 换行（正常处理）
         if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-            if not (event.modifiers() & Qt.ControlModifier):
-                # 提交内容
+            if event.modifiers() & Qt.ControlModifier:
+                # Ctrl+Enter: 正常换行
+                super().keyPressEvent(event)
+                return
+            else:
+                # Enter: 提交内容
                 self.submit_requested.emit()
                 event.accept()
                 return
@@ -320,7 +324,7 @@ class QuickInputWindow(QWidget):
         self.options_container = QWidget()
         self.options_container.setStyleSheet("background: transparent; border: none;")
         self.options_layout = QHBoxLayout()
-        self.options_layout.setContentsMargins(0, 8, 0, 8)
+        self.options_layout.setContentsMargins(0, 0, 0, 0)
         self.options_layout.setSpacing(12)
         
         # Notion选填项: 状态、优先级、标签
@@ -329,67 +333,95 @@ class QuickInputWindow(QWidget):
         notion_options_layout.setContentsMargins(0, 0, 0, 0)
         notion_options_layout.setSpacing(12)
         
-        # 状态选择
+        # 状态选择（改为按钮组）
         status_label = QLabel("状态:")
         status_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px;")
-        self.notion_status = QComboBox()
-        self.notion_status.addItems(["待办", "进行中", "已完成", "已搁置"])
-        self.notion_status.setCurrentText("待办")
-        self.notion_status.setStyleSheet(f"""
-            QComboBox {{
-                background: {bg_input};
-                color: {fg_color};
-                border: 1px solid {border_color};
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 13px;
-                min-width: 100px;
-            }}
-            QComboBox:focus {{
-                border: 2px solid {accent_color};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                padding-right: 8px;
-            }}
-            QComboBox::down-arrow {{
-                width: 12px;
-                height: 12px;
-            }}
-        """)
         notion_options_layout.addWidget(status_label)
-        notion_options_layout.addWidget(self.notion_status)
         
-        # 优先级选择
+        # 状态按钮组
+        status_btn_group = QHBoxLayout()
+        status_btn_group.setSpacing(6)
+        self.notion_status_group = QButtonGroup()
+        self.notion_status_buttons = {}
+        status_options = ["待办", "进行中", "已完成", "已搁置"]
+        
+        for i, option in enumerate(status_options):
+            btn = QPushButton(option)
+            btn.setCheckable(True)
+            btn.setFixedHeight(36)
+            btn.setMinimumWidth(70)
+            if i == 0:  # 默认选中"待办"
+                btn.setChecked(True)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: white;
+                    border: 1px solid {border_color};
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                    font-size: 14px;
+                }}
+                QPushButton:hover {{
+                    border: 1px solid {accent_color};
+                    background: rgba(94, 184, 217, 0.1);
+                }}
+                QPushButton:checked {{
+                    background: {accent_color};
+                    color: white;
+                    border: 1px solid {accent_color};
+                }}
+            """)
+            self.notion_status_group.addButton(btn, i)
+            self.notion_status_buttons[option] = btn
+            status_btn_group.addWidget(btn)
+        
+        status_btn_group.addStretch()
+        notion_options_layout.addLayout(status_btn_group)
+        
+        # 优先级选择（改为按钮组）
         priority_label = QLabel("优先级:")
         priority_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 55px;")
-        self.notion_priority = QComboBox()
-        self.notion_priority.addItems(["高", "中", "低"])
-        self.notion_priority.setCurrentText("中")
-        self.notion_priority.setStyleSheet(f"""
-            QComboBox {{
-                background: {bg_input};
-                color: {fg_color};
-                border: 1px solid {border_color};
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 13px;
-                min-width: 80px;
-            }}
-            QComboBox:focus {{
-                border: 2px solid {accent_color};
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                padding-right: 8px;
-            }}
-            QComboBox::down-arrow {{
-                width: 12px;
-                height: 12px;
-            }}
-        """)
         notion_options_layout.addWidget(priority_label)
-        notion_options_layout.addWidget(self.notion_priority)
+        
+        # 优先级按钮组
+        priority_btn_group = QHBoxLayout()
+        priority_btn_group.setSpacing(6)
+        self.notion_priority_group = QButtonGroup()
+        self.notion_priority_buttons = {}
+        priority_options = ["高", "中", "低"]
+        
+        for i, option in enumerate(priority_options):
+            btn = QPushButton(option)
+            btn.setCheckable(True)
+            btn.setFixedHeight(36)
+            btn.setMinimumWidth(60)
+            if i == 1:  # 默认选中"中"
+                btn.setChecked(True)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: white;
+                    border: 1px solid {border_color};
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                    font-size: 14px;
+                }}
+                QPushButton:hover {{
+                    border: 1px solid {accent_color};
+                    background: rgba(94, 184, 217, 0.1);
+                }}
+                QPushButton:checked {{
+                    background: {accent_color};
+                    color: white;
+                    border: 1px solid {accent_color};
+                }}
+            """)
+            self.notion_priority_group.addButton(btn, i)
+            self.notion_priority_buttons[option] = btn
+            priority_btn_group.addWidget(btn)
+        
+        priority_btn_group.addStretch()
+        notion_options_layout.addLayout(priority_btn_group)
         
         # 标签输入
         tags_label_notion = QLabel("标签:")
@@ -429,7 +461,7 @@ class QuickInputWindow(QWidget):
         tags_label_flomo.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px;")
         self.flomo_tags = QLineEdit()
         self.flomo_tags.setPlaceholderText("多个标签用空格分隔")
-        self.flomo_tags.setText("闪念")  # 默认标签
+        self.flomo_tags.setText("闪念 QuickNote AI")  # 默认标签
         self.flomo_tags.setStyleSheet(f"""
             QLineEdit {{
                 background: {bg_input};
@@ -453,37 +485,9 @@ class QuickInputWindow(QWidget):
         self.flomo_options.setLayout(flomo_options_layout)
         self.flomo_options.setVisible(False)
         
-        # TickTick选填项: 提醒时间
+        # TickTick选填项: 无（已删除提醒时间输入框）
+        # 创建一个空的占位widget，保持布局一致
         self.ticktick_options = QWidget()
-        ticktick_options_layout = QHBoxLayout()
-        ticktick_options_layout.setContentsMargins(0, 0, 0, 0)
-        ticktick_options_layout.setSpacing(12)
-        
-        reminder_label = QLabel("提醒时间:")
-        reminder_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 70px;")
-        self.ticktick_reminder = QLineEdit()
-        self.ticktick_reminder.setPlaceholderText("如：明天下午3点、今天晚上7点半（可选）")
-        self.ticktick_reminder.setStyleSheet(f"""
-            QLineEdit {{
-                background: {bg_input};
-                color: {fg_color};
-                border: 1px solid {border_color};
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 13px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {accent_color};
-                background: {bg_secondary};
-            }}
-            QLineEdit::placeholder {{
-                color: {fg_secondary};
-            }}
-        """)
-        ticktick_options_layout.addWidget(reminder_label)
-        ticktick_options_layout.addWidget(self.ticktick_reminder, stretch=1)
-        ticktick_options_layout.addStretch()
-        self.ticktick_options.setLayout(ticktick_options_layout)
         self.ticktick_options.setVisible(False)
         
         # 添加到选项容器
@@ -673,6 +677,7 @@ class QuickInputWindow(QWidget):
             self.notion_options.setVisible(True)
             self.flomo_options.setVisible(False)
             self.ticktick_options.setVisible(False)
+            self.options_container.setVisible(True)  # 显示选项容器
             self.text_edit.setPlaceholderText("输入你的灵感...")
             logger.info("切换到Notion模式")
         elif platform == "flomo":
@@ -682,9 +687,10 @@ class QuickInputWindow(QWidget):
             self.notion_options.setVisible(False)
             self.flomo_options.setVisible(True)
             self.ticktick_options.setVisible(False)
+            self.options_container.setVisible(True)  # 显示选项容器
             # 如果标签为空，设置为默认值
             if not self.flomo_tags.text().strip():
-                self.flomo_tags.setText("闪念")
+                self.flomo_tags.setText("闪念 QuickNote AI")
             self.text_edit.setPlaceholderText("输入金句、知识或方法论...")
             logger.info("切换到Flomo模式")
         else:  # ticktick
@@ -693,7 +699,8 @@ class QuickInputWindow(QWidget):
             self.ticktick_tab_btn.setChecked(True)
             self.notion_options.setVisible(False)
             self.flomo_options.setVisible(False)
-            self.ticktick_options.setVisible(True)
+            self.ticktick_options.setVisible(False)  # TickTick无选填项，隐藏
+            self.options_container.setVisible(False)  # 隐藏整个选项容器，减少间隔
             self.text_edit.setPlaceholderText("输入待办任务...")
             logger.info("切换到滴答清单模式")
     
@@ -707,8 +714,20 @@ class QuickInputWindow(QWidget):
             
             if self.target_platform == "notion":
                 # Notion: 状态、优先级、标签
-                extra_params["status"] = self.notion_status.currentText()
-                extra_params["priority"] = self.notion_priority.currentText()
+                # 获取选中的状态按钮
+                checked_status_btn = self.notion_status_group.checkedButton()
+                if checked_status_btn:
+                    extra_params["status"] = checked_status_btn.text()
+                else:
+                    extra_params["status"] = "待办"  # 默认值
+                
+                # 获取选中的优先级按钮
+                checked_priority_btn = self.notion_priority_group.checkedButton()
+                if checked_priority_btn:
+                    extra_params["priority"] = checked_priority_btn.text()
+                else:
+                    extra_params["priority"] = "中"  # 默认值
+                
                 tags_text = self.notion_tags.text().strip()
                 if tags_text:
                     extra_params["tags"] = [tag.strip() for tag in tags_text.split() if tag.strip()]
@@ -717,31 +736,31 @@ class QuickInputWindow(QWidget):
                 # Flomo: 标签
                 tags_text = self.flomo_tags.text().strip()
                 if not tags_text:
-                    tags_text = "闪念"  # 默认标签
+                    tags_text = "闪念 QuickNote AI"  # 默认标签
                 extra_params["tags"] = tags_text
                 
             elif self.target_platform == "ticktick":
-                # TickTick: 提醒时间
-                reminder_text = self.ticktick_reminder.text().strip()
-                if reminder_text:
-                    extra_params["reminder"] = reminder_text
+                # TickTick: 无额外参数（时间从内容中自动提取）
+                pass
             
             logger.info(f"提交内容到{self.target_platform}: {content[:50]}..., 参数: {extra_params}")
             
-            # 发送信号：平台，内容，额外参数
-            self.content_submitted.emit(self.target_platform, content, extra_params)
-            
-            # 清空输入
+            # 立即清空输入并隐藏窗口（不等待保存结果）
             self.text_edit.clear()
             if self.target_platform == "flomo":
-                self.flomo_tags.setText("闪念")  # 重置为默认值
+                self.flomo_tags.setText("闪念 QuickNote AI")  # 重置为默认值
             elif self.target_platform == "notion":
                 self.notion_tags.clear()
-                self.notion_status.setCurrentText("待办")
-                self.notion_priority.setCurrentText("中")
-            elif self.target_platform == "ticktick":
-                self.ticktick_reminder.clear()
+                # 重置状态和优先级按钮为默认值
+                if "待办" in self.notion_status_buttons:
+                    self.notion_status_buttons["待办"].setChecked(True)
+                if "中" in self.notion_priority_buttons:
+                    self.notion_priority_buttons["中"].setChecked(True)
+            # TickTick 无需清空（已删除提醒时间输入框）
             self.hide()
+            
+            # 发送信号到后台处理（异步）
+            self.content_submitted.emit(self.target_platform, content, extra_params)
         else:
             logger.warning("内容为空，不提交")
     
