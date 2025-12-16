@@ -37,8 +37,11 @@ class FlomoAPI:
             full_content = content
             if tags:
                 # Flomo的标签格式是 #标签名
-                tag_str = " ".join([f"#{tag}" for tag in tags])
-                full_content = f"{content}\n\n{tag_str}"
+                # 清理标签：去除已有的#号，然后统一添加
+                cleaned_tags = [tag.lstrip('#').strip() for tag in tags if tag.strip()]
+                tag_str = " ".join([f"#{tag}" for tag in cleaned_tags if tag])
+                if tag_str:
+                    full_content = f"{content}\n\n{tag_str}"
             
             # 发送POST请求
             response = requests.post(

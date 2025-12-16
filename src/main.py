@@ -411,10 +411,10 @@ class QuickNoteApp(QObject):
                 priority = result.get("priority", "中")
                 tags = result.get("tags", [])
                 
-                # 强制添加标签：AI自动同步、QuickNote AI
-                forced_tags = ["AI自动同步", "QuickNote AI"]
+                # 强制添加标签：QuickNote_AI自动同步
+                forced_tag = "QuickNote_AI自动同步"
                 # 合并标签，去重，保持顺序（强制标签在前）
-                all_tags = forced_tags + [tag for tag in tags if tag not in forced_tags]
+                all_tags = [forced_tag] + [tag for tag in tags if tag != forced_tag]
                 
                 success = self.notion_api.add_inspiration(
                     content,
@@ -437,8 +437,8 @@ class QuickNoteApp(QObject):
                 if category and category not in tags:
                     tags.insert(0, category)
                 
-                # 强制添加标签：AI自动同步
-                forced_tag = "AI自动同步"
+                # 强制添加标签：QuickNote_AI自动同步
+                forced_tag = "QuickNote_AI自动同步"
                 if forced_tag not in tags:
                     tags.append(forced_tag)
                 
