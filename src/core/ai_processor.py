@@ -166,4 +166,86 @@ class AIProcessor:
         
         # 都不符合
         return {"valuable": False, "type": None}
+    
+    def extract_time_info(self, content: str) -> Optional[Dict[str, Any]]:
+        """
+        从文本中提取时间信息
+        
+        Args:
+            content: 待分析的文本
+            
+        Returns:
+            包含时间信息的字典，如 {"has_time": true, "datetime": "2025-12-16 07:30", "original": "明天上午7点半"}
+            如果没有时间信息，返回 {"has_time": false}
+        """
+        try:
+            from datetime import datetime, timezone, timedelta
+            
+            # 获取当前时间（东八区 UTC+8）
+            tz_cn = timezone(timedelta(hours=8))
+            current_time = datetime.now(tz_cn)
+            current_str = current_time.strftime("%Y-%m-%d %H:%M")
+            current_weekday = current_time.strftime("%A")  # Monday, Tuesday, etc.
+            
+            prompt = f"""你是一个时间提取助手。请从以下文本中提取时间信息，并转换为标准格式。
+
+文本：{content}
+
+当前时间：{current_str}（{current_weekday}，东八区时间）
+
+请以JSON格式返回：
+- 如果包含时间信息：{{"has_time": true, "datetime": "YYYY-MM-DD HH:MM", "original_text": "原文中的时间描述"}}
+- 如果没有时间信息：{{"has_time": false}}
+
+注意：
+1. 请基于当前时间准确计算相对时间（明天、后天、下周一等）
+2. 时间格式统一为 24 小时制
+3. 如果只有日期没有具体时间，默认设为 09:00
+4. "上午7点半" = 07:30, "下午3点" = 15:00
+5. "晚上8点" = 20:00"""
+
+            if self.provider in ["openai", "deepseek"]:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": "你是一个专业的时间信息提取助手，请严格按照JSON格式返回结果。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1,
+                    response_format={"type": "json_object"}
+                )
+                result_text = response.choices[0].message.content
+                
+            elif self.provider == "claude":
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=512,
+                    messages=[
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.1
+                )
+                result_text = response.content[0].text
+            
+            result = json.loads(result_text)
+            
+            # 如果识别到时间，转换为滴答清单需要的格式
+            if result.get("has_time") and result.get("datetime"):
+                try:
+                    dt_str = result.get("datetime")
+                    # 解析 AI 返回的时间（格式: YYYY-MM-DD HH:MM）
+                    dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M")
+                    # 转换为滴答清单需要的格式（带时区）
+                    ticktick_format = dt.strftime("%Y-%m-%dT%H:%M:%S") + "+0800"
+                    result["datetime_ticktick"] = ticktick_format
+                    logger.info(f"时间格式已转换: {dt_str} -> {ticktick_format}")
+                except Exception as e:
+                    logger.warning(f"时间格式转换失败: {e}")
+            
+            logger.info(f"时间提取完成: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"时间提取失败: {e}")
+            return {"has_time": False, "error": str(e)}
 

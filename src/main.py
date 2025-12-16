@@ -341,10 +341,29 @@ class QuickNoteApp(QObject):
             # 生成任务标题（取前50个字符，如果内容较长）
             title = content[:50] + "..." if len(content) > 50 else content
             
+            # AI 提取时间信息
+            time_info = None
+            due_date = None
+            if self.ai_processor:
+                try:
+                    time_info = self.ai_processor.extract_time_info(content)
+                    if time_info and time_info.get("has_time"):
+                        # 优先使用滴答清单格式，如果没有则使用原格式
+                        due_date = time_info.get("datetime_ticktick") or time_info.get("datetime")
+                        logger.info(f"识别到时间: {due_date} (原文: {time_info.get('original_text', '')})")
+                except Exception as e:
+                    logger.warning(f"时间提取失败，将不设置截止时间: {e}")
+            
+            # 构建额外参数
+            extra_params = {}
+            if due_date:
+                extra_params["due_date"] = due_date
+            
             success = self.ticktick_api.add_task(
                 title=title,
                 content=content,
-                list_name=list_name
+                list_name=list_name,
+                extra=extra_params if extra_params else None
             )
             
             if success:
