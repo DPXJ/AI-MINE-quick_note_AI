@@ -282,9 +282,10 @@ class QuickNoteApp(QObject):
         else:
             self.clipboard_monitor.stop()
     
-    def _on_quick_input_submitted(self, platform: str, content: str, tags: str = ""):
+    def _on_quick_input_submitted(self, platform: str, content: str, extra_params: dict = None):
         """处理快速输入的内容"""
-        logger.info(f"收到快速输入: 平台={platform}, 内容={content[:50]}..., 标签={tags}")
+        extra_params = extra_params or {}
+        logger.info(f"收到快速输入: 平台={platform}, 内容={content[:50]}..., 参数={extra_params}")
         
         if platform == "notion":
             # 保存到Notion
@@ -295,11 +296,20 @@ class QuickNoteApp(QObject):
             
             self.tray_icon.show_message("处理中", "正在保存到Notion...")
             
-            success = self.notion_api.add_inspiration(content)
+            # 从额外参数中提取
+            status = extra_params.get("status", "待办")
+            priority = extra_params.get("priority", "中")
+            tags = extra_params.get("tags", [])
+            
+            success = self.notion_api.add_inspiration(
+                content,
+                priority=priority,
+                tags=tags
+            )
             
             if success:
                 self.tray_icon.show_message("保存成功", "灵感已保存到Notion ✅")
-                logger.info("快速输入已保存到Notion")
+                logger.info(f"快速输入已保存到Notion，优先级: {priority}, 标签: {tags}")
             else:
                 self.tray_icon.show_message("保存失败", "保存到Notion失败 ❌")
                 logger.error("保存到Notion失败")
@@ -313,8 +323,10 @@ class QuickNoteApp(QObject):
             
             self.tray_icon.show_message("处理中", "正在保存到Flomo...")
             
+            # 从额外参数中获取标签
+            tags_str = extra_params.get("tags", "闪念")
             # 解析标签（空格分隔）
-            tag_list = [tag.strip() for tag in tags.split() if tag.strip()] if tags else ["闪念"]
+            tag_list = [tag.strip() for tag in tags_str.split() if tag.strip()]
             
             success = self.flomo_api.add_memo(content, tags=tag_list)
             
@@ -335,41 +347,35 @@ class QuickNoteApp(QObject):
             
             self.tray_icon.show_message("处理中", "正在保存到滴答清单...")
             
-            # tags 参数里存的是清单名称（可选）
-            list_name = tags.strip() if tags else ""
-            
             # 生成任务标题（取前50个字符，如果内容较长）
             title = content[:50] + "..." if len(content) > 50 else content
             
-            # AI 提取时间信息
+            # AI 提取时间信息（优先从额外参数中的 reminder 字段提取，如果没有则从内容中提取）
             time_info = None
             due_date = None
+            reminder_text = extra_params.get("reminder", "")
+            
             if self.ai_processor:
                 try:
-                    time_info = self.ai_processor.extract_time_info(content)
-                    if time_info and time_info.get("has_time"):
-                        # 优先使用滴答清单格式，如果没有则使用原格式
-                        due_date = time_info.get("datetime_ticktick") or time_info.get("datetime")
-                        logger.info(f"识别到时间: {due_date} (原文: {time_info.get('original_text', '')})")
+                    # 如果用户在UI中输入了提醒时间，优先使用
+                    extract_text = reminder_text if reminder_text else content
+                    time_info = self.ai_processor.extract_time_info(extract_text)
+                    if time_info and time_info.get("due_date_iso"):
+                        due_date = time_info.get("due_date_iso")
+                        logger.info(f"识别到时间: {due_date} (原文: {extract_text})")
                 except Exception as e:
                     logger.warning(f"时间提取失败，将不设置截止时间: {e}")
-            
-            # 构建额外参数
-            extra_params = {}
-            if due_date:
-                extra_params["due_date"] = due_date
             
             success = self.ticktick_api.add_task(
                 title=title,
                 content=content,
-                list_name=list_name,
-                extra=extra_params if extra_params else None
+                due_date=due_date
             )
             
             if success:
-                list_display = f" (清单: {list_name})" if list_name else ""
-                self.tray_icon.show_message("保存成功", f"已保存到滴答清单 ✅{list_display}")
-                logger.info(f"快速输入已保存到滴答清单，清单: {list_name or '默认'}")
+                time_display = f" (提醒: {due_date})" if due_date else ""
+                self.tray_icon.show_message("保存成功", f"已保存到滴答清单 ✅{time_display}")
+                logger.info(f"快速输入已保存到滴答清单，提醒时间: {due_date or '无'}")
             else:
                 self.tray_icon.show_message("保存失败", "保存到滴答清单失败 ❌")
                 logger.error("保存到滴答清单失败")
@@ -399,11 +405,13 @@ class QuickNoteApp(QObject):
                 # 保存到Notion
                 title = result.get("title")
                 priority = result.get("priority", "中")
+                tags = result.get("tags", [])
                 
                 success = self.notion_api.add_inspiration(
                     content,
                     title=title,
-                    priority=priority
+                    priority=priority,
+                    tags=tags
                 )
                 
                 if success:
@@ -428,6 +436,38 @@ class QuickNoteApp(QObject):
                         f"{content[:30]}..."
                     )
                     logger.info("剪切板内容已保存到Flomo")
+            
+            elif target_type == "ticktick" and self.ticktick_api:
+                # 保存到滴答清单
+                title = content[:50] + "..." if len(content) > 50 else content
+                
+                # 提取时间信息
+                time_info = None
+                due_date = None
+                try:
+                    time_info = self.ai_processor.extract_time_info(content)
+                    if time_info and time_info.get("has_time"):
+                        due_date = time_info.get("datetime_ticktick") or time_info.get("datetime")
+                        logger.info(f"识别到时间: {due_date}")
+                except Exception as e:
+                    logger.warning(f"时间提取失败: {e}")
+                
+                extra_params = {}
+                if due_date:
+                    extra_params["due_date"] = due_date
+                
+                success = self.ticktick_api.add_task(
+                    title=title,
+                    content=content,
+                    extra=extra_params if extra_params else None
+                )
+                
+                if success:
+                    self.tray_icon.show_message(
+                        "已保存到滴答清单",
+                        f"{content[:30]}..."
+                    )
+                    logger.info("剪切板内容已保存到滴答清单")
             
         except Exception as e:
             logger.error(f"处理剪切板内容失败: {e}")

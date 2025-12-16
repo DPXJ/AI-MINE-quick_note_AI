@@ -83,8 +83,10 @@ class AIProcessor:
             json_instruction = """
 
 请以JSON格式返回结果：
-- 如果内容符合条件，返回：{"valuable": true, "type": "flomo"或"notion", "category": "分类", "tags": ["标签1", "标签2"]}
-- 如果内容不符合条件，返回：{"valuable": false}"""
+- 如果内容符合条件，返回：{"valuable": true, "type": "flomo"或"notion"或"ticktick", "category": "分类", "tags": ["标签1", "标签2"], "title": "简短标题（25字内）", "priority": "高/中/低"}
+- 如果内容不符合条件，返回：{"valuable": false}
+- tags字段必须返回，用于标记内容的关键分类（如"会议"、"产品"、"评审"等）
+- title字段是对内容的精炼总结，不超过25个字符"""
             
             prompt = prompt + json_instruction
             
@@ -142,7 +144,24 @@ class AIProcessor:
             logger.debug("剪切板监控已禁用")
             return {"valuable": False, "type": None}
         
-        # 先尝试Flomo规则（如果启用）
+        # 1️⃣ 优先尝试滴答清单规则（如果启用且包含时间信息）
+        ticktick_enabled = config.get("ai_rules.ticktick.enabled", True)
+        if ticktick_enabled:
+            # 先快速检查是否有时间相关关键词
+            time_keywords = ["明天", "今天", "后天", "下周", "点", "时", "上午", "下午", "晚上", "会议", "评审", "开会"]
+            has_time_keyword = any(keyword in content for keyword in time_keywords)
+            
+            if has_time_keyword:
+                ticktick_prompt = config.get("ai_rules.ticktick.prompt", "")
+                if ticktick_prompt:
+                    # 添加类型标识和标签提取要求
+                    ticktick_prompt_with_type = ticktick_prompt + "\n\n如果符合条件，返回的type必须是\"ticktick\"，并且需要提取tags（任务标签，如['会议', '产品评审']）。"
+                    result = self.analyze_content(content, ticktick_prompt_with_type)
+                    if result and result.get("valuable") and result.get("type") == "ticktick":
+                        logger.info(f"AI分类结果：TickTick - {result}")
+                        return result
+        
+        # 2️⃣ 再尝试Flomo规则（如果启用）
         flomo_enabled = config.get("ai_rules.flomo.enabled", True)
         if flomo_enabled:
             flomo_prompt = config.get("ai_rules.flomo.prompt", "")
@@ -151,17 +170,19 @@ class AIProcessor:
                 flomo_prompt_with_type = flomo_prompt + "\n\n如果符合条件，返回的type必须是\"flomo\"。"
                 result = self.analyze_content(content, flomo_prompt_with_type)
                 if result and result.get("valuable") and result.get("type") == "flomo":
+                    logger.info(f"AI分类结果：Flomo - {result}")
                     return result
         
-        # 再尝试Notion规则（如果启用）
+        # 3️⃣ 最后尝试Notion规则（如果启用）
         notion_enabled = config.get("ai_rules.notion.enabled", True)
         if notion_enabled:
             notion_prompt = config.get("ai_rules.notion.prompt", "")
             if notion_prompt:
-                # 添加类型标识
-                notion_prompt_with_type = notion_prompt + "\n\n如果符合条件，返回的type必须是\"notion\"。"
+                # 添加类型标识和标签提取要求
+                notion_prompt_with_type = notion_prompt + "\n\n如果符合条件，返回的type必须是\"notion\"，并且需要提取tags（标签，如['产品', '待办']）。"
                 result = self.analyze_content(content, notion_prompt_with_type)
                 if result and result.get("valuable") and result.get("type") == "notion":
+                    logger.info(f"AI分类结果：Notion - {result}")
                     return result
         
         # 都不符合

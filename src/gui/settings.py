@@ -31,6 +31,15 @@ DEFAULT_NOTION_PROMPT = """你是一个任务识别助手。请判断以下内�
 
 请根据内容自动识别，如果符合以上特征，则同步到Notion作为待办事项。"""
 
+DEFAULT_TICKTICK_PROMPT = """你是一个待办任务识别助手。请判断以下内容是否包含明确的待办任务。
+
+如果内容包含以下特征，则同步到滴答清单：
+- 明确包含具体时间或日期（如"明天上午9点"、"下周一"、"12月20号"）
+- 是一个具体的、可执行的待办任务
+- 包含"提醒"、"记得"、"别忘了"等明确的待办提示词
+
+注意：仅同步明确的、带时间的待办任务，普通想法或灵感不要同步到滴答清单。"""
+
 
 class SettingsDialog(QDialog):
     """设置对话框"""
@@ -621,6 +630,109 @@ class SettingsDialog(QDialog):
         notion_group.setLayout(notion_layout)
         layout.addWidget(notion_group)
         
+        # 滴答清单规则配置
+        ticktick_group = QGroupBox()
+        ticktick_layout = QVBoxLayout()
+        
+        ticktick_title_layout = QHBoxLayout()
+        ticktick_title = QLabel("│ 滴答清单 自动同步规则")
+        ticktick_title.setStyleSheet("""
+            QLabel {
+                color: #007acc;
+                font-size: 15px;
+                font-weight: bold;
+                padding: 8px 0;
+            }
+        """)
+        ticktick_title_layout.addWidget(ticktick_title)
+        ticktick_title_layout.addStretch()
+        
+        # 滴答清单开关
+        self.ticktick_auto_sync = QCheckBox("启用自动同步")
+        self.ticktick_auto_sync.setChecked(True)
+        self.ticktick_auto_sync.setStyleSheet("""
+            QCheckBox {
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QCheckBox::indicator {
+                width: 20px;
+                height: 20px;
+            }
+        """)
+        ticktick_title_layout.addWidget(self.ticktick_auto_sync)
+        
+        ticktick_layout.addLayout(ticktick_title_layout)
+        
+        ticktick_label = QLabel("AI识别提示词：")
+        ticktick_label.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 10px;")
+        ticktick_layout.addWidget(ticktick_label)
+        
+        self.ticktick_prompt = QTextEdit()
+        self.ticktick_prompt.setPlaceholderText("输入滴答清单识别提示词...")
+        self.ticktick_prompt.setMinimumHeight(150)
+        self.ticktick_prompt.setStyleSheet("""
+            QTextEdit {
+                background: white;
+                border: 2px solid #ccc;
+                border-radius: 4px;
+                padding: 10px;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+            QTextEdit:focus {
+                border: 2px solid #007acc;
+            }
+        """)
+        # 监听文本变化，启用保存按钮
+        self.ticktick_prompt.textChanged.connect(self._on_prompt_changed)
+        ticktick_layout.addWidget(self.ticktick_prompt)
+        
+        ticktick_btn_layout = QHBoxLayout()
+        ticktick_btn_layout.addStretch()
+        
+        # 保存按钮（初始隐藏，文本变化时显示）
+        self.ticktick_save_btn = QPushButton("💾 保存提示词")
+        self.ticktick_save_btn.setVisible(False)
+        self.ticktick_save_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                background: #007acc;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #005a9e;
+            }
+        """)
+        self.ticktick_save_btn.clicked.connect(lambda: self._save_prompt('ticktick'))
+        ticktick_btn_layout.addWidget(self.ticktick_save_btn)
+        
+        ticktick_reset_btn = QPushButton("🔄 重置为默认")
+        ticktick_reset_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 15px;
+                background: #5cb85c;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #4cae4c;
+            }
+        """)
+        ticktick_reset_btn.clicked.connect(self._reset_ticktick_prompt)
+        ticktick_btn_layout.addWidget(ticktick_reset_btn)
+        
+        ticktick_layout.addLayout(ticktick_btn_layout)
+        ticktick_group.setLayout(ticktick_layout)
+        layout.addWidget(ticktick_group)
+        
         # 提示信息
         hint = QLabel("""
 💡 使用说明：
@@ -852,6 +964,14 @@ class SettingsDialog(QDialog):
                     self.notion_prompt.setText(notion_prompt)
                 except Exception as e:
                     logger.warning(f"加载Notion提示词失败: {e}")
+            
+            # 加载滴答清单提示词
+            if hasattr(self, 'ticktick_prompt'):
+                try:
+                    ticktick_prompt = rules.get('ticktick', {}).get('prompt', self._get_default_ticktick_prompt())
+                    self.ticktick_prompt.setText(ticktick_prompt)
+                except Exception as e:
+                    logger.warning(f"加载滴答清单提示词失败: {e}")
         except Exception as e:
             logger.error(f"加载AI规则失败: {e}")
             rules = {}
@@ -876,11 +996,19 @@ class SettingsDialog(QDialog):
             except Exception as e:
                 logger.warning(f"加载Notion开关失败: {e}")
         
+        if hasattr(self, 'ticktick_auto_sync'):
+            try:
+                self.ticktick_auto_sync.setChecked(rules.get('ticktick', {}).get('enabled', True))
+            except Exception as e:
+                logger.warning(f"加载滴答清单开关失败: {e}")
+        
         # 记录初始提示词，用于检测变化
         if hasattr(self, 'flomo_prompt'):
             self._flomo_prompt_original = self.flomo_prompt.toPlainText()
         if hasattr(self, 'notion_prompt'):
             self._notion_prompt_original = self.notion_prompt.toPlainText()
+        if hasattr(self, 'ticktick_prompt'):
+            self._ticktick_prompt_original = self.ticktick_prompt.toPlainText()
     
     def _on_provider_changed(self, provider: str):
         """当AI提供商改变时，自动更新默认配置"""
@@ -992,6 +1120,17 @@ TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
                 except Exception as e:
                     logger.warning(f"保存Notion规则失败: {e}")
             
+            # 保存滴答清单规则
+            if hasattr(self, 'ticktick_auto_sync') and hasattr(self, 'ticktick_prompt'):
+                try:
+                    if 'ticktick' not in config_data['ai_rules']:
+                        config_data['ai_rules']['ticktick'] = {}
+                    
+                    config_data['ai_rules']['ticktick']['enabled'] = self.ticktick_auto_sync.isChecked()
+                    config_data['ai_rules']['ticktick']['prompt'] = self.ticktick_prompt.toPlainText().strip()
+                except Exception as e:
+                    logger.warning(f"保存滴答清单规则失败: {e}")
+            
             # 写入config.yaml
             with open(config_file, 'w', encoding='utf-8') as f:
                 yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
@@ -1024,6 +1163,10 @@ TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
         """获取默认Notion提示词"""
         return DEFAULT_NOTION_PROMPT
     
+    def _get_default_ticktick_prompt(self):
+        """获取默认滴答清单提示词"""
+        return DEFAULT_TICKTICK_PROMPT
+    
     def _reset_flomo_prompt(self):
         """重置Flomo提示词为默认值"""
         self.flomo_prompt.setText(self._get_default_flomo_prompt())
@@ -1039,6 +1182,14 @@ TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
         if hasattr(self, 'notion_save_btn'):
             self.notion_save_btn.setVisible(False)
         logger.info("Notion提示词已重置为默认值")
+    
+    def _reset_ticktick_prompt(self):
+        """重置滴答清单提示词为默认值"""
+        self.ticktick_prompt.setText(self._get_default_ticktick_prompt())
+        self._ticktick_prompt_original = self.ticktick_prompt.toPlainText()
+        if hasattr(self, 'ticktick_save_btn'):
+            self.ticktick_save_btn.setVisible(False)
+        logger.info("滴答清单提示词已重置为默认值")
     
     def _on_prompt_changed(self):
         """提示词文本变化时，显示保存按钮"""
@@ -1061,6 +1212,16 @@ TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
             else:
                 if hasattr(self, 'notion_save_btn'):
                     self.notion_save_btn.setVisible(False)
+        
+        # 检查滴答清单提示词是否变化
+        if hasattr(self, 'ticktick_prompt') and hasattr(self, '_ticktick_prompt_original'):
+            current = self.ticktick_prompt.toPlainText()
+            if current != self._ticktick_prompt_original:
+                if hasattr(self, 'ticktick_save_btn'):
+                    self.ticktick_save_btn.setVisible(True)
+            else:
+                if hasattr(self, 'ticktick_save_btn'):
+                    self.ticktick_save_btn.setVisible(False)
     
     def _save_prompt(self, prompt_type: str):
         """保存提示词"""
@@ -1093,16 +1254,29 @@ TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
                 self._notion_prompt_original = self.notion_prompt.toPlainText()
                 self.notion_save_btn.setVisible(False)
                 logger.info("Notion提示词已保存")
+            elif prompt_type == 'ticktick':
+                if 'ticktick' not in config_data['ai_rules']:
+                    config_data['ai_rules']['ticktick'] = {}
+                config_data['ai_rules']['ticktick']['prompt'] = self.ticktick_prompt.toPlainText().strip()
+                self._ticktick_prompt_original = self.ticktick_prompt.toPlainText()
+                self.ticktick_save_btn.setVisible(False)
+                logger.info("滴答清单提示词已保存")
             
             # 写入config.yaml
             with open(config_file, 'w', encoding='utf-8') as f:
                 yaml.dump(config_data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
             
             from PyQt5.QtWidgets import QMessageBox
+            prompt_name = {
+                'flomo': 'Flomo',
+                'notion': 'Notion',
+                'ticktick': '滴答清单'
+            }.get(prompt_type, prompt_type)
+            
             QMessageBox.information(
                 self,
                 "保存成功",
-                f"{'Flomo' if prompt_type == 'flomo' else 'Notion'}提示词已保存！"
+                f"{prompt_name}提示词已保存！"
             )
             
         except Exception as e:

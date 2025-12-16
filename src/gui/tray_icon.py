@@ -203,19 +203,8 @@ class TrayIcon(QObject):
     
     def _quit_app(self):
         """退出应用"""
-        from PyQt5.QtWidgets import QMessageBox
-        
-        reply = QMessageBox.question(
-            None,
-            "确认退出",
-            "确定要退出 QuickNote AI 吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            logger.info("用户退出应用")
-            self.quit_triggered.emit()
+        logger.info("用户退出应用")
+        self.quit_triggered.emit()
     
     def show_message(self, title: str, message: str, duration: int = 3000):
         """显示托盘消息"""

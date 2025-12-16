@@ -1,5 +1,5 @@
 """快速输入窗口"""
-from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect
+from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QComboBox
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
 from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent
 from loguru import logger
@@ -34,8 +34,8 @@ class CustomTextEdit(QTextEdit):
 class QuickInputWindow(QWidget):
     """快速输入窗口"""
     
-    # 信号：内容提交（平台，内容，标签）
-    content_submitted = pyqtSignal(str, str, str)  # platform, content, tags
+    # 信号：内容提交（平台，内容，额外参数字典）
+    content_submitted = pyqtSignal(str, str, dict)  # platform, content, extra_params
     
     def __init__(self, config: dict):
         """
@@ -103,11 +103,11 @@ class QuickInputWindow(QWidget):
         """)
         main_container.setObjectName("main_container")
         
-        # 添加更强的阴影效果（AI 发光感 + 立体感）
+        # 添加阴影效果（AI 发光感 + 立体感）
         shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(80)  # 超大模糊半径，增强立体感
+        shadow.setBlurRadius(40)  # 模糊半径缩小50%（从80到40）
         shadow.setColor(QColor(94, 184, 217, 100))  # 柔和青色光晕
-        shadow.setOffset(0, 15)  # 增大阴影偏移
+        shadow.setOffset(0, 8)  # 阴影偏移
         main_container.setGraphicsEffect(shadow)
         
         # 主布局
@@ -212,12 +212,13 @@ class QuickInputWindow(QWidget):
         content_widget.setObjectName("content_widget")
         
         content_layout = QVBoxLayout()
-        content_layout.setContentsMargins(20, 15, 20, 20)  # 增加底部边距到20px
+        content_layout.setContentsMargins(20, 15, 20, 18)  # 底部边距稍微减少
         content_layout.setSpacing(15)
         
-        # Tab切换按钮
+        # Tab切换按钮（只包含平台切换按钮）
         tab_layout = QHBoxLayout()
         tab_layout.setSpacing(10)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
         
         self.notion_tab_btn = QPushButton("📝 Notion")
         self.notion_tab_btn.setCheckable(True)
@@ -312,66 +313,185 @@ class QuickInputWindow(QWidget):
         self.ticktick_tab_btn.clicked.connect(lambda: self._switch_platform("ticktick"))
         tab_layout.addWidget(self.ticktick_tab_btn)
         
-        # 标签输入（仅Flomo显示）
-        self.tags_label = QLabel("标签（用空格分隔）：")
-        self.tags_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary};")
-        self.tags_label.setVisible(False)
-        
-        self.tags_input = QLineEdit()
-        self.tags_input.setPlaceholderText("例如：产品 AI 方法论")
-        self.tags_input.setText("闪念")  # 设置默认标签
-        self.tags_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: {bg_input};
-                color: {fg_color};
-                border: 1px solid {border_color};
-                border-radius: 10px;
-                padding: 10px 14px;
-                font-size: 14px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {accent_color};
-                background: {bg_secondary};
-            }}
-            QLineEdit::placeholder {{
-                color: {fg_secondary};
-            }}
-        """)
-        self.tags_input.setVisible(False)
-        
-        # 清单名称输入（仅TickTick显示）
-        self.list_name_label = QLabel("清单名称（可选）：")
-        self.list_name_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary};")
-        self.list_name_label.setVisible(False)
-        
-        self.list_name_input = QLineEdit()
-        self.list_name_input.setPlaceholderText("例如：工作、生活（不填则使用默认清单）")
-        self.list_name_input.setStyleSheet(f"""
-            QLineEdit {{
-                background: {bg_input};
-                color: {fg_color};
-                border: 1px solid {border_color};
-                border-radius: 10px;
-                padding: 10px 14px;
-                font-size: 14px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {accent_color};
-                background: {bg_secondary};
-            }}
-            QLineEdit::placeholder {{
-                color: {fg_secondary};
-            }}
-        """)
-        self.list_name_input.setVisible(False)
-        
-        tab_layout.addWidget(self.tags_label)
-        tab_layout.addWidget(self.tags_input, stretch=1)
-        tab_layout.addWidget(self.list_name_label)
-        tab_layout.addWidget(self.list_name_input, stretch=1)
         tab_layout.addStretch()
-        
         content_layout.addLayout(tab_layout)
+        
+        # ========== 平台特定的选填项区域 ==========
+        self.options_container = QWidget()
+        self.options_container.setStyleSheet("background: transparent; border: none;")
+        self.options_layout = QHBoxLayout()
+        self.options_layout.setContentsMargins(0, 8, 0, 8)
+        self.options_layout.setSpacing(12)
+        
+        # Notion选填项: 状态、优先级、标签
+        self.notion_options = QWidget()
+        notion_options_layout = QHBoxLayout()
+        notion_options_layout.setContentsMargins(0, 0, 0, 0)
+        notion_options_layout.setSpacing(12)
+        
+        # 状态选择
+        status_label = QLabel("状态:")
+        status_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px;")
+        self.notion_status = QComboBox()
+        self.notion_status.addItems(["待办", "进行中", "已完成", "已搁置"])
+        self.notion_status.setCurrentText("待办")
+        self.notion_status.setStyleSheet(f"""
+            QComboBox {{
+                background: {bg_input};
+                color: {fg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+                min-width: 100px;
+            }}
+            QComboBox:focus {{
+                border: 2px solid {accent_color};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                padding-right: 8px;
+            }}
+            QComboBox::down-arrow {{
+                width: 12px;
+                height: 12px;
+            }}
+        """)
+        notion_options_layout.addWidget(status_label)
+        notion_options_layout.addWidget(self.notion_status)
+        
+        # 优先级选择
+        priority_label = QLabel("优先级:")
+        priority_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 55px;")
+        self.notion_priority = QComboBox()
+        self.notion_priority.addItems(["高", "中", "低"])
+        self.notion_priority.setCurrentText("中")
+        self.notion_priority.setStyleSheet(f"""
+            QComboBox {{
+                background: {bg_input};
+                color: {fg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+                min-width: 80px;
+            }}
+            QComboBox:focus {{
+                border: 2px solid {accent_color};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                padding-right: 8px;
+            }}
+            QComboBox::down-arrow {{
+                width: 12px;
+                height: 12px;
+            }}
+        """)
+        notion_options_layout.addWidget(priority_label)
+        notion_options_layout.addWidget(self.notion_priority)
+        
+        # 标签输入
+        tags_label_notion = QLabel("标签:")
+        tags_label_notion.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px;")
+        self.notion_tags = QLineEdit()
+        self.notion_tags.setPlaceholderText("多个标签用空格分隔")
+        self.notion_tags.setStyleSheet(f"""
+            QLineEdit {{
+                background: {bg_input};
+                color: {fg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {accent_color};
+                background: {bg_secondary};
+            }}
+            QLineEdit::placeholder {{
+                color: {fg_secondary};
+            }}
+        """)
+        notion_options_layout.addWidget(tags_label_notion)
+        notion_options_layout.addWidget(self.notion_tags, stretch=1)
+        
+        notion_options_layout.addStretch()
+        self.notion_options.setLayout(notion_options_layout)
+        
+        # Flomo选填项: 标签
+        self.flomo_options = QWidget()
+        flomo_options_layout = QHBoxLayout()
+        flomo_options_layout.setContentsMargins(0, 0, 0, 0)
+        flomo_options_layout.setSpacing(12)
+        
+        tags_label_flomo = QLabel("标签:")
+        tags_label_flomo.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px;")
+        self.flomo_tags = QLineEdit()
+        self.flomo_tags.setPlaceholderText("多个标签用空格分隔")
+        self.flomo_tags.setText("闪念")  # 默认标签
+        self.flomo_tags.setStyleSheet(f"""
+            QLineEdit {{
+                background: {bg_input};
+                color: {fg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {accent_color};
+                background: {bg_secondary};
+            }}
+            QLineEdit::placeholder {{
+                color: {fg_secondary};
+            }}
+        """)
+        flomo_options_layout.addWidget(tags_label_flomo)
+        flomo_options_layout.addWidget(self.flomo_tags, stretch=1)
+        flomo_options_layout.addStretch()
+        self.flomo_options.setLayout(flomo_options_layout)
+        self.flomo_options.setVisible(False)
+        
+        # TickTick选填项: 提醒时间
+        self.ticktick_options = QWidget()
+        ticktick_options_layout = QHBoxLayout()
+        ticktick_options_layout.setContentsMargins(0, 0, 0, 0)
+        ticktick_options_layout.setSpacing(12)
+        
+        reminder_label = QLabel("提醒时间:")
+        reminder_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 70px;")
+        self.ticktick_reminder = QLineEdit()
+        self.ticktick_reminder.setPlaceholderText("如：明天下午3点、今天晚上7点半（可选）")
+        self.ticktick_reminder.setStyleSheet(f"""
+            QLineEdit {{
+                background: {bg_input};
+                color: {fg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 13px;
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {accent_color};
+                background: {bg_secondary};
+            }}
+            QLineEdit::placeholder {{
+                color: {fg_secondary};
+            }}
+        """)
+        ticktick_options_layout.addWidget(reminder_label)
+        ticktick_options_layout.addWidget(self.ticktick_reminder, stretch=1)
+        ticktick_options_layout.addStretch()
+        self.ticktick_options.setLayout(ticktick_options_layout)
+        self.ticktick_options.setVisible(False)
+        
+        # 添加到选项容器
+        self.options_layout.addWidget(self.notion_options)
+        self.options_layout.addWidget(self.flomo_options)
+        self.options_layout.addWidget(self.ticktick_options)
+        self.options_container.setLayout(self.options_layout)
+        content_layout.addWidget(self.options_container)
         
         # 输入框
         self.text_edit = CustomTextEdit()  # 使用自定义的TextEdit
@@ -381,7 +501,7 @@ class QuickInputWindow(QWidget):
                 background: {bg_input};
                 color: {fg_color};
                 border: 1px solid {border_color};
-                border-radius: 12px;
+                border-radius: 14px;
                 padding: 20px;
                 font-size: 16px;
                 font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
@@ -410,6 +530,7 @@ class QuickInputWindow(QWidget):
         # 底部按钮区域
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
+        button_layout.setContentsMargins(0, 8, 0, 0)  # 增加顶部边距
         
         # 提示标签
         hint_label = QLabel("💡 Enter发送 | Ctrl+Enter换行 | Esc取消")
@@ -549,33 +670,30 @@ class QuickInputWindow(QWidget):
             self.notion_tab_btn.setChecked(True)
             self.flomo_tab_btn.setChecked(False)
             self.ticktick_tab_btn.setChecked(False)
-            self.tags_label.setVisible(False)
-            self.tags_input.setVisible(False)
-            self.list_name_label.setVisible(False)
-            self.list_name_input.setVisible(False)
+            self.notion_options.setVisible(True)
+            self.flomo_options.setVisible(False)
+            self.ticktick_options.setVisible(False)
             self.text_edit.setPlaceholderText("输入你的灵感...")
             logger.info("切换到Notion模式")
         elif platform == "flomo":
             self.notion_tab_btn.setChecked(False)
             self.flomo_tab_btn.setChecked(True)
             self.ticktick_tab_btn.setChecked(False)
-            self.tags_label.setVisible(True)
-            self.tags_input.setVisible(True)
-            self.list_name_label.setVisible(False)
-            self.list_name_input.setVisible(False)
+            self.notion_options.setVisible(False)
+            self.flomo_options.setVisible(True)
+            self.ticktick_options.setVisible(False)
             # 如果标签为空，设置为默认值
-            if not self.tags_input.text().strip():
-                self.tags_input.setText("闪念")
+            if not self.flomo_tags.text().strip():
+                self.flomo_tags.setText("闪念")
             self.text_edit.setPlaceholderText("输入金句、知识或方法论...")
             logger.info("切换到Flomo模式")
         else:  # ticktick
             self.notion_tab_btn.setChecked(False)
             self.flomo_tab_btn.setChecked(False)
             self.ticktick_tab_btn.setChecked(True)
-            self.tags_label.setVisible(False)
-            self.tags_input.setVisible(False)
-            self.list_name_label.setVisible(True)
-            self.list_name_input.setVisible(True)
+            self.notion_options.setVisible(False)
+            self.flomo_options.setVisible(False)
+            self.ticktick_options.setVisible(True)
             self.text_edit.setPlaceholderText("输入待办任务...")
             logger.info("切换到滴答清单模式")
     
@@ -584,29 +702,45 @@ class QuickInputWindow(QWidget):
         content = self.text_edit.toPlainText().strip()
         
         if content:
-            # 获取标签或额外参数
-            tags = ""
-            if self.target_platform == "flomo":
-                tags = self.tags_input.text().strip()
-                if not tags:
-                    tags = "闪念"  # 如果没有标签，使用默认值
+            # 根据平台收集额外参数
+            extra_params = {}
+            
+            if self.target_platform == "notion":
+                # Notion: 状态、优先级、标签
+                extra_params["status"] = self.notion_status.currentText()
+                extra_params["priority"] = self.notion_priority.currentText()
+                tags_text = self.notion_tags.text().strip()
+                if tags_text:
+                    extra_params["tags"] = [tag.strip() for tag in tags_text.split() if tag.strip()]
+                
+            elif self.target_platform == "flomo":
+                # Flomo: 标签
+                tags_text = self.flomo_tags.text().strip()
+                if not tags_text:
+                    tags_text = "闪念"  # 默认标签
+                extra_params["tags"] = tags_text
+                
             elif self.target_platform == "ticktick":
-                # TickTick 使用 tags 字段传递清单名称
-                tags = self.list_name_input.text().strip()
+                # TickTick: 提醒时间
+                reminder_text = self.ticktick_reminder.text().strip()
+                if reminder_text:
+                    extra_params["reminder"] = reminder_text
             
-            logger.info(f"提交内容到{self.target_platform}: {content[:50]}..., 标签/参数: {tags}")
+            logger.info(f"提交内容到{self.target_platform}: {content[:50]}..., 参数: {extra_params}")
             
-            # 发送信号：平台，内容，标签/参数
-            self.content_submitted.emit(self.target_platform, content, tags)
+            # 发送信号：平台，内容，额外参数
+            self.content_submitted.emit(self.target_platform, content, extra_params)
             
             # 清空输入
             self.text_edit.clear()
             if self.target_platform == "flomo":
-                self.tags_input.setText("闪念")  # 重置为默认值
+                self.flomo_tags.setText("闪念")  # 重置为默认值
+            elif self.target_platform == "notion":
+                self.notion_tags.clear()
+                self.notion_status.setCurrentText("待办")
+                self.notion_priority.setCurrentText("中")
             elif self.target_platform == "ticktick":
-                self.list_name_input.clear()  # 清空清单名称
-            else:
-                self.tags_input.clear()
+                self.ticktick_reminder.clear()
             self.hide()
         else:
             logger.warning("内容为空，不提交")
