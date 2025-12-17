@@ -1,7 +1,7 @@
 """快速输入窗口"""
 from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QButtonGroup, QApplication
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
-from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent, QCursor, QPainter, QBrush
+from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent, QCursor, QPainter, QBrush, QPen, QLinearGradient
 from loguru import logger
 
 
@@ -33,6 +33,76 @@ class CustomTextEdit(QTextEdit):
         
         # 其他按键正常处理（包括Backspace、Delete等）
         super().keyPressEvent(event)
+
+
+class GradientBorderButton(QPushButton):
+    """自定义按钮，支持渐变边框（AI风格）"""
+    
+    def __init__(self, text, bg_color, border_gradient_colors, text_color, parent=None):
+        super().__init__(text, parent)
+        self.bg_color = bg_color
+        self.border_gradient_colors = border_gradient_colors  # [(r, g, b, a), ...]
+        self.text_color = text_color
+        self._hover = False
+        
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+        
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+        
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        rect = self.rect()
+        border_width = 2
+        
+        # 绘制渐变边框
+        if self._hover:
+            # hover时边框更亮
+            colors = [(min(255, c[0] + 20), min(255, c[1] + 20), min(255, c[2] + 20), c[3]) 
+                     for c in self.border_gradient_colors]
+        else:
+            colors = self.border_gradient_colors
+        
+        # 绘制渐变边框（使用多个小段模拟渐变）
+        num_segments = len(colors)
+        for i in range(num_segments):
+            color1 = colors[i]
+            color2 = colors[(i + 1) % num_segments]
+            start_pos = i / num_segments
+            end_pos = (i + 1) / num_segments
+            
+            # 绘制边框段（简化版：使用线性渐变）
+            painter.setPen(QColor(*color1))
+            # 这里简化处理，使用单色边框
+            if i == 0:
+                painter.setPen(QColor(*colors[0]))
+        
+        # 绘制边框（使用渐变色的平均值）
+        avg_color = tuple(sum(c[i] for c in colors) // len(colors) for i in range(3))
+        painter.setPen(QColor(*avg_color, colors[0][3] if colors else 200))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(rect.adjusted(border_width//2, border_width//2, 
+                                             -border_width//2, -border_width//2), 
+                               10, 10)
+        
+        # 绘制背景
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(self.bg_color)))
+        painter.drawRoundedRect(rect.adjusted(border_width, border_width, 
+                                            -border_width, -border_width), 
+                               10, 10)
+        
+        # 绘制文字
+        painter.setPen(QColor(self.text_color))
+        painter.setFont(self.font())
+        painter.drawText(rect, Qt.AlignCenter, self.text())
 
 
 class PinButton(QPushButton):
@@ -344,22 +414,23 @@ class QuickInputWindow(QWidget):
         self.notion_tab_btn.setChecked(True)
         self.notion_tab_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {accent_color};
-                color: {bg_color};
-                border: none;
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
                 border-radius: 10px;
                 padding: 10px 24px;
                 font-size: 14px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {accent_secondary};
+                background: {bg_input};
+                border: 1px solid rgba(94, 184, 217, 0.4);
+                color: {fg_color};
             }}
             QPushButton:checked {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {accent_color}, stop:1 {accent_secondary});
-                color: white;
-                border: 2px solid {accent_color};
+                background: {bg_input};
+                color: {accent_color};
+                border: 1px solid {accent_color};
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -375,22 +446,23 @@ class QuickInputWindow(QWidget):
         self.flomo_tab_btn.setChecked(False)
         self.flomo_tab_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {accent_color};
-                color: {bg_color};
-                border: none;
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
                 border-radius: 10px;
                 padding: 10px 24px;
                 font-size: 14px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {accent_secondary};
+                background: {bg_input};
+                border: 1px solid rgba(94, 184, 217, 0.4);
+                color: {fg_color};
             }}
             QPushButton:checked {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {accent_color}, stop:1 {accent_secondary});
-                color: white;
-                border: 2px solid {accent_color};
+                background: {bg_input};
+                color: {accent_color};
+                border: 1px solid {accent_color};
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -406,22 +478,23 @@ class QuickInputWindow(QWidget):
         self.ticktick_tab_btn.setChecked(False)
         self.ticktick_tab_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {accent_color};
-                color: {bg_color};
-                border: none;
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
                 border-radius: 10px;
                 padding: 10px 24px;
                 font-size: 14px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {accent_secondary};
+                background: {bg_input};
+                border: 1px solid rgba(94, 184, 217, 0.4);
+                color: {fg_color};
             }}
             QPushButton:checked {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {accent_color}, stop:1 {accent_secondary});
-                color: white;
-                border: 2px solid {accent_color};
+                background: {bg_input};
+                color: {accent_color};
+                border: 1px solid {accent_color};
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -473,8 +546,8 @@ class QuickInputWindow(QWidget):
                 btn.setChecked(True)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: transparent;
-                    color: white;
+                    background: {bg_secondary};
+                    color: {fg_secondary};
                     border: 1px solid {border_color};
                     border-radius: 6px;
                     padding: 4px 10px;
@@ -482,12 +555,13 @@ class QuickInputWindow(QWidget):
                     font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
                 }}
                 QPushButton:hover {{
-                    border: 1px solid {accent_color};
-                    background: rgba(94, 184, 217, 0.1);
+                    border: 1px solid rgba(94, 184, 217, 0.5);
+                    background: {bg_input};
+                    color: {fg_color};
                 }}
                 QPushButton:checked {{
-                    background: {accent_color};
-                    color: white;
+                    background: {bg_input};
+                    color: {accent_color};
                     border: 1px solid {accent_color};
                 }}
             """)
@@ -523,8 +597,8 @@ class QuickInputWindow(QWidget):
                 btn.setChecked(True)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: transparent;
-                    color: white;
+                    background: {bg_secondary};
+                    color: {fg_secondary};
                     border: 1px solid {border_color};
                     border-radius: 6px;
                     padding: 4px 10px;
@@ -532,12 +606,13 @@ class QuickInputWindow(QWidget):
                     font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
                 }}
                 QPushButton:hover {{
-                    border: 1px solid {accent_color};
-                    background: rgba(94, 184, 217, 0.1);
+                    border: 1px solid rgba(94, 184, 217, 0.5);
+                    background: {bg_input};
+                    color: {fg_color};
                 }}
                 QPushButton:checked {{
-                    background: {accent_color};
-                    color: white;
+                    background: {bg_input};
+                    color: {accent_color};
                     border: 1px solid {accent_color};
                 }}
             """)
@@ -698,40 +773,100 @@ class QuickInputWindow(QWidget):
             QPushButton:hover {{
                 background: {bg_input};
                 color: {fg_color};
-                border: 1px solid {accent_color};
+                border: 1px solid rgba(94, 184, 217, 0.5);
             }}
         """)
         cancel_btn.clicked.connect(self._cancel)
         button_layout.addWidget(cancel_btn)
         
-        # 发送按钮
+        # 发送按钮（AI风格渐变边框，深色背景）
         send_btn = QPushButton("🚀 发送")
         send_btn.setFixedSize(120, 44)
+        # 保存渐变颜色和背景色供自定义绘制使用
+        send_btn._gradient_colors = [
+            (94, 184, 217, 200),   # 主青色（更亮）
+            (74, 158, 196, 220),   # 深青色
+            (94, 184, 217, 200),   # 回到主青色（循环渐变）
+        ]
+        send_btn._bg_color = bg_input
+        send_btn._text_color = accent_color
+        send_btn._hover = False
+        
+        # 设置基础样式（边框会被自定义绘制覆盖）
         send_btn.setStyleSheet(f"""
             QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {accent_color}, stop:1 {accent_secondary});
-                color: white;
+                background: {bg_input};
+                color: {accent_color};
                 border: none;
                 border-radius: 10px;
                 font-size: 15px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(0, 212, 255, 1), stop:1 rgba(0, 153, 255, 1));
-                border: 1px solid {accent_color};
-            }}
-            QPushButton:pressed {{
-                background: {accent_secondary};
-            }}
         """)
+        
+        # 重写 paintEvent 实现渐变边框
+        original_paint = send_btn.paintEvent
+        def paint_with_gradient_border(event):
+            painter = QPainter(send_btn)
+            painter.setRenderHint(QPainter.Antialiasing)
+            rect = send_btn.rect()
+            border_width = 2
+            
+            # 根据hover状态调整颜色亮度
+            if send_btn._hover:
+                colors = [(min(255, c[0] + 30), min(255, c[1] + 30), min(255, c[2] + 30), c[3]) 
+                         for c in send_btn._gradient_colors]
+            else:
+                colors = send_btn._gradient_colors
+            
+            # 创建线性渐变（从左上到右下）
+            gradient = QLinearGradient(rect.left(), rect.top(), rect.right(), rect.bottom())
+            gradient.setColorAt(0.0, QColor(*colors[0]))
+            gradient.setColorAt(0.5, QColor(*colors[1]))
+            gradient.setColorAt(1.0, QColor(*colors[2]))
+            
+            # 绘制渐变边框
+            painter.setPen(QPen(gradient, border_width))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRoundedRect(rect.adjusted(border_width//2, border_width//2, 
+                                                 -border_width//2, -border_width//2), 
+                                   10, 10)
+            
+            # 绘制深色背景
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(QColor(send_btn._bg_color)))
+            painter.drawRoundedRect(rect.adjusted(border_width, border_width, 
+                                                -border_width, -border_width), 
+                                   10, 10)
+            
+            # 绘制文字
+            painter.setPen(QColor(send_btn._text_color))
+            painter.setFont(send_btn.font())
+            painter.drawText(rect, Qt.AlignCenter, send_btn.text())
+        
+        # 重写 enterEvent 和 leaveEvent 以支持 hover 效果
+        original_enter = send_btn.enterEvent
+        original_leave = send_btn.leaveEvent
+        
+        def enter_event(event):
+            send_btn._hover = True
+            send_btn.update()
+            original_enter(event)
+        
+        def leave_event(event):
+            send_btn._hover = False
+            send_btn.update()
+            original_leave(event)
+        
+        send_btn.paintEvent = paint_with_gradient_border
+        send_btn.enterEvent = enter_event
+        send_btn.leaveEvent = leave_event
         send_btn.clicked.connect(self._submit_content)
         
-        # 为发送按钮添加发光效果（柔和版）
+        # 为发送按钮添加柔和发光效果（AI风格）
         send_glow = QGraphicsDropShadowEffect()
-        send_glow.setBlurRadius(30)
-        send_glow.setColor(QColor(94, 184, 217, 140))
+        send_glow.setBlurRadius(25)
+        send_glow.setColor(QColor(94, 184, 217, 100))  # 更柔和的发光
         send_glow.setOffset(0, 2)
         send_btn.setGraphicsEffect(send_glow)
         
