@@ -117,7 +117,7 @@ class HotkeyListener:
         
         while not self.stop_watchdog and self.is_running:
             try:
-                time.sleep(5)  # 每5秒检查一次（缩短间隔）
+                time.sleep(3)  # 每3秒检查一次（更频繁的检查）
                 current_time = time.time()
                 self.last_check_time = current_time
                 
@@ -132,25 +132,34 @@ class HotkeyListener:
                     listener_dead = True
                 
                 # 检查2：快捷键触发检测（关键！）
-                # 情况A：如果从未触发过快捷键，且启动超过2分钟，强制重启（可能是监听器启动就失效）
+                # 情况A：如果从未触发过快捷键，且启动超过1分钟，强制重启（缩短检测时间）
                 if not listener_dead and self.last_hotkey_trigger_time is None and self.start_time:
                     time_since_start = current_time - self.start_time
-                    if time_since_start > 120:  # 2分钟从未触发过快捷键
+                    if time_since_start > 60:  # 1分钟从未触发过快捷键（从2分钟缩短）
                         logger.warning(f"检测到监听器可能失效（启动{int(time_since_start)}秒从未触发快捷键），强制重启...")
                         listener_dead = True
-                # 情况B：如果之前触发过，但超过3分钟没有触发，认为失效
+                # 情况B：如果之前触发过，但超过2分钟没有触发，认为失效（缩短检测时间）
                 elif not listener_dead and self.last_hotkey_trigger_time is not None:
                     time_since_hotkey = current_time - self.last_hotkey_trigger_time
-                    if time_since_hotkey > 180:  # 3分钟无快捷键触发
+                    if time_since_hotkey > 120:  # 2分钟无快捷键触发（从3分钟缩短）
                         logger.warning(f"检测到监听器可能失效（{int(time_since_hotkey)}秒无快捷键触发），强制重启...")
                         listener_dead = True
                 
-                # 检查3：心跳检测 - 如果超过60秒没有按键活动，也认为监听器失效（备用检测）
+                # 检查3：心跳检测 - 如果超过30秒没有按键活动，也认为监听器失效（更严格的检测）
                 if not listener_dead and self.last_activity_time:
                     time_since_activity = current_time - self.last_activity_time
-                    if time_since_activity > 60:  # 60秒无活动
+                    if time_since_activity > 30:  # 30秒无活动（缩短到30秒）
                         logger.warning(f"检测到监听器可能失效（{int(time_since_activity)}秒无按键活动），强制重启...")
                         listener_dead = True
+                
+                # 检查4：主动测试 - 定期清理可能卡住的按键状态
+                if not listener_dead and self.current_keys:
+                    # 如果按键集合不为空，但超过5秒没有活动，可能是状态卡住了
+                    if self.last_activity_time:
+                        time_since_activity = current_time - self.last_activity_time
+                        if time_since_activity > 5:  # 5秒无活动但按键集合不为空
+                            logger.debug(f"检测到按键状态可能卡住，清理按键集合: {self.current_keys}")
+                            self.current_keys.clear()  # 清理可能卡住的状态
                 
                 # 如果需要重启
                 if listener_dead:
@@ -276,21 +285,32 @@ class HotkeyListener:
     def _on_release(self, key):
         """按键释放事件"""
         try:
+            # 更新活动时间
+            self.last_activity_time = time.time()
+            
             key_name = self._get_key_name(key)
             if not key_name:
                 return True  # 返回 True 继续监听
             
-            # 延迟清空按键集合，确保快捷键匹配有机会完成
-            # 使用线程延迟，避免阻塞
-            def delayed_remove():
-                time.sleep(0.1)  # 延迟100ms
-                self.current_keys.discard(key_name)
+            # 标准化修饰键名称
+            normalized_name = key_name
+            if key_name in ['ctrl', 'ctrl_l', 'ctrl_r']:
+                normalized_name = 'control'
+            elif key_name in ['shift_l', 'shift_r']:
+                normalized_name = 'shift'
             
-            # 对于修饰键，立即移除（因为它们通常按得比较久）
-            if key_name in ['ctrl', 'control', 'ctrl_l', 'ctrl_r', 'shift', 'shift_l', 'shift_r', 'alt', 'cmd']:
-                self.current_keys.discard(key_name)
-            else:
-                # 对于普通键，延迟移除，给快捷键匹配留时间
+            # 移除所有可能的变体（包括标准化后的名称）
+            keys_to_remove = [key_name, normalized_name]
+            for k in keys_to_remove:
+                self.current_keys.discard(k)
+            
+            # 对于普通键（如space），延迟一小段时间再移除，确保快捷键匹配有机会完成
+            if key_name not in ['ctrl', 'control', 'ctrl_l', 'ctrl_r', 'shift', 'shift_l', 'shift_r', 'alt', 'cmd']:
+                def delayed_remove():
+                    time.sleep(0.05)  # 缩短延迟到50ms
+                    self.current_keys.discard(key_name)
+                    if normalized_name != key_name:
+                        self.current_keys.discard(normalized_name)
                 threading.Thread(target=delayed_remove, daemon=True).start()
             
         except Exception as e:

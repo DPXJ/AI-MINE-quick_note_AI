@@ -14,6 +14,7 @@ class TrayIcon(QObject):
     settings_triggered = pyqtSignal()
     quit_triggered = pyqtSignal()
     restart_triggered = pyqtSignal()
+    restart_hotkey_triggered = pyqtSignal()  # 重启快捷键监听
     clipboard_toggled = pyqtSignal(bool)
     clipboard_history_triggered = pyqtSignal()
     
@@ -97,8 +98,13 @@ class TrayIcon(QObject):
         
         menu.addSeparator()
         
+        # 重启快捷键监听
+        restart_hotkey_action = QAction("⌨️ 重启快捷键监听", menu)
+        restart_hotkey_action.triggered.connect(self.restart_hotkey_triggered.emit)
+        menu.addAction(restart_hotkey_action)
+        
         # 重启
-        restart_action = QAction("🔄 重启", menu)
+        restart_action = QAction("🔄 重启应用", menu)
         restart_action.triggered.connect(self._restart_app)
         menu.addAction(restart_action)
         

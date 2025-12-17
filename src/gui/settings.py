@@ -325,7 +325,7 @@ class SettingsDialog(QDialog):
         ticktick_layout = QVBoxLayout()
         
         # 自定义标题，带颜色和竖条
-        ticktick_title = QLabel("│ 滴答清单配置（通过集简云）")
+        ticktick_title = QLabel("│ 滴答清单配置（通过邮件）")
         ticktick_title.setStyleSheet("""
             QLabel {
                 color: #007acc;
@@ -338,10 +338,24 @@ class SettingsDialog(QDialog):
         """)
         ticktick_layout.addWidget(ticktick_title)
         
-        self.ticktick_webhook = self._create_input_row("集简云 Webhook URL:", "https://hook.jijyun.cn/...", ticktick_layout)
+        # SMTP服务器配置
+        self.ticktick_smtp_host = self._create_input_row("SMTP服务器:", "smtp.qq.com", ticktick_layout)
+        self.ticktick_smtp_port = self._create_input_row("SMTP端口:", "465", ticktick_layout)
         
-        ticktick_hint = QLabel("💡 需在集简云创建 Webhook → 滴答清单 的自动化流程")
-        ticktick_hint.setStyleSheet("color: #666; font-size: 14px; margin: 10px 0; padding: 10px; background: #fff3e0; border-radius: 6px;")
+        # 发件邮箱配置
+        self.ticktick_smtp_user = self._create_input_row("发件邮箱:", "your_email@qq.com", ticktick_layout)
+        self.ticktick_smtp_pass = self._create_input_row("SMTP授权码:", "xxxxxxxxxxxx", ticktick_layout)
+        self.ticktick_smtp_pass.setEchoMode(QLineEdit.Password)  # 密码输入框
+        
+        # 滴答清单专属邮箱
+        self.ticktick_email = self._create_input_row("滴答清单邮箱:", "todo+xxxxx@mail.dida365.com", ticktick_layout)
+        
+        ticktick_hint = QLabel("💡 配置说明：\n"
+                               "1. 在滴答清单设置中获取专属邮箱地址（设置 → 日历与邮件 → 通过邮件创建任务）\n"
+                               "2. 使用QQ/163等邮箱，需开启SMTP服务并获取授权码（不是登录密码）\n"
+                               "3. 邮件标题支持智能识别：时间、优先级（!!!高/!!中/!低）、清单（^清单名）")
+        ticktick_hint.setStyleSheet("color: #666; font-size: 13px; margin: 10px 0; padding: 10px; background: #fff3e0; border-radius: 6px;")
+        ticktick_hint.setWordWrap(True)
         ticktick_layout.addWidget(ticktick_hint)
         
         ticktick_group.setLayout(ticktick_layout)
@@ -938,7 +952,12 @@ class SettingsDialog(QDialog):
         
         self.flomo_url.setText(self.config_obj.flomo_api_url)
         
-        self.ticktick_webhook.setText(self.config_obj.ticktick_webhook_url)
+        # TickTick 邮箱配置
+        self.ticktick_smtp_host.setText(self.config_obj.ticktick_smtp_host)
+        self.ticktick_smtp_port.setText(str(self.config_obj.ticktick_smtp_port))
+        self.ticktick_smtp_user.setText(self.config_obj.ticktick_smtp_user)
+        self.ticktick_smtp_pass.setText(self.config_obj.ticktick_smtp_pass)
+        self.ticktick_email.setText(self.config_obj.ticktick_email)
         
         # 加载快捷键配置（使用HotkeyInput控件）
         self.hotkey_quick.setText(self.config_obj.hotkey_quick_input)
@@ -1061,8 +1080,12 @@ NOTION_DATABASE_ID={self.notion_db.text()}
 # Flomo配置
 FLOMO_API_URL={self.flomo_url.text()}
 
-# 滴答清单配置（通过集简云）
-TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
+# 滴答清单配置（通过邮件）
+TICKTICK_SMTP_HOST={self.ticktick_smtp_host.text()}
+TICKTICK_SMTP_PORT={self.ticktick_smtp_port.text()}
+TICKTICK_SMTP_USER={self.ticktick_smtp_user.text()}
+TICKTICK_SMTP_PASS={self.ticktick_smtp_pass.text()}
+TICKTICK_EMAIL={self.ticktick_email.text()}
 """
             
             # 写入.env文件
@@ -1413,10 +1436,19 @@ TICKTICK_WEBHOOK_URL={self.ticktick_webhook.text()}
                 result_text += "⚠️ Flomo 未配置（可选）\n"
             
             # 测试滴答清单连接
-            if self.ticktick_webhook.text():
+            if (self.ticktick_smtp_user.text() and 
+                self.ticktick_smtp_pass.text() and 
+                self.ticktick_email.text()):
                 try:
                     from src.integrations.ticktick_api import TickTickAPI
-                    ticktick = TickTickAPI(self.ticktick_webhook.text())
+                    smtp_port = int(self.ticktick_smtp_port.text() or "465")
+                    ticktick = TickTickAPI(
+                        smtp_host=self.ticktick_smtp_host.text() or "smtp.qq.com",
+                        smtp_port=smtp_port,
+                        smtp_user=self.ticktick_smtp_user.text(),
+                        smtp_pass=self.ticktick_smtp_pass.text(),
+                        ticktick_email=self.ticktick_email.text()
+                    )
                     ticktick_ok = ticktick.test_connection()
                     if ticktick_ok:
                         result_text += "✅ 滴答清单 连接成功\n"

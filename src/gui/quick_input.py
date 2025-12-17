@@ -331,26 +331,27 @@ class QuickInputWindow(QWidget):
         self.notion_options = QWidget()
         notion_options_layout = QHBoxLayout()
         notion_options_layout.setContentsMargins(0, 0, 0, 0)
-        notion_options_layout.setSpacing(12)
+        notion_options_layout.setSpacing(15)  # 增加间距从12到15
         
         # 状态选择（改为按钮组）
         status_label = QLabel("状态:")
-        status_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px;")
+        status_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 50px;")  # 增加最小宽度
         notion_options_layout.addWidget(status_label)
         
         # 状态按钮组
         status_btn_group = QHBoxLayout()
         status_btn_group.setSpacing(6)
+        status_btn_group.setContentsMargins(0, 0, 0, 0)
         self.notion_status_group = QButtonGroup()
         self.notion_status_buttons = {}
-        status_options = ["待办", "进行中", "已完成", "已搁置"]
+        status_options = ["待处理", "进行中", "已完成", "已搁置"]
         
         for i, option in enumerate(status_options):
             btn = QPushButton(option)
             btn.setCheckable(True)
             btn.setFixedHeight(36)
-            btn.setMinimumWidth(70)
-            if i == 0:  # 默认选中"待办"
+            btn.setMinimumWidth(75)  # 稍微增加宽度以适应"待处理"
+            if i == 0:  # 默认选中"待处理"
                 btn.setChecked(True)
             btn.setStyleSheet(f"""
                 QPushButton {{
@@ -380,12 +381,13 @@ class QuickInputWindow(QWidget):
         
         # 优先级选择（改为按钮组）
         priority_label = QLabel("优先级:")
-        priority_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 55px;")
+        priority_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 60px;")  # 增加最小宽度
         notion_options_layout.addWidget(priority_label)
         
         # 优先级按钮组
         priority_btn_group = QHBoxLayout()
         priority_btn_group.setSpacing(6)
+        priority_btn_group.setContentsMargins(0, 0, 0, 0)
         self.notion_priority_group = QButtonGroup()
         self.notion_priority_buttons = {}
         priority_options = ["高", "中", "低"]
@@ -425,17 +427,22 @@ class QuickInputWindow(QWidget):
         
         # 标签输入
         tags_label_notion = QLabel("标签:")
-        tags_label_notion.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px;")
+        tags_label_notion.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 50px;")  # 增加最小宽度
+        notion_options_layout.addWidget(tags_label_notion)
+        
         self.notion_tags = QLineEdit()
+        self.notion_tags.setText("灵感")  # 默认标签
         self.notion_tags.setPlaceholderText("多个标签用空格分隔")
+        self.notion_tags.setMinimumWidth(200)  # 设置最小宽度，避免太窄
         self.notion_tags.setStyleSheet(f"""
             QLineEdit {{
                 background: {bg_input};
                 color: {fg_color};
                 border: 1px solid {border_color};
                 border-radius: 8px;
-                padding: 8px 12px;
+                padding: 8px 14px;
                 font-size: 13px;
+                min-width: 200px;
             }}
             QLineEdit:focus {{
                 border: 2px solid {accent_color};
@@ -445,8 +452,7 @@ class QuickInputWindow(QWidget):
                 color: {fg_secondary};
             }}
         """)
-        notion_options_layout.addWidget(tags_label_notion)
-        notion_options_layout.addWidget(self.notion_tags, stretch=1)
+        notion_options_layout.addWidget(self.notion_tags, stretch=2)  # 增加stretch值，让标签输入框更宽
         
         notion_options_layout.addStretch()
         self.notion_options.setLayout(notion_options_layout)
@@ -719,7 +725,7 @@ class QuickInputWindow(QWidget):
                 if checked_status_btn:
                     extra_params["status"] = checked_status_btn.text()
                 else:
-                    extra_params["status"] = "待办"  # 默认值
+                    extra_params["status"] = "待处理"  # 默认值
                 
                 # 获取选中的优先级按钮
                 checked_priority_btn = self.notion_priority_group.checkedButton()
@@ -750,10 +756,10 @@ class QuickInputWindow(QWidget):
             if self.target_platform == "flomo":
                 self.flomo_tags.setText("闪念 QuickNote AI")  # 重置为默认值
             elif self.target_platform == "notion":
-                self.notion_tags.clear()
+                self.notion_tags.setText("灵感")  # 重置为默认标签
                 # 重置状态和优先级按钮为默认值
-                if "待办" in self.notion_status_buttons:
-                    self.notion_status_buttons["待办"].setChecked(True)
+                if "待处理" in self.notion_status_buttons:
+                    self.notion_status_buttons["待处理"].setChecked(True)
                 if "中" in self.notion_priority_buttons:
                     self.notion_priority_buttons["中"].setChecked(True)
             # TickTick 无需清空（已删除提醒时间输入框）

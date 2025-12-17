@@ -105,8 +105,16 @@ class QuickNoteApp(QObject):
                 self.flomo_api = FlomoAPI(config.flomo_api_url)
             
             self.ticktick_api = None
-            if config.ticktick_webhook_url:
-                self.ticktick_api = TickTickAPI(config.ticktick_webhook_url)
+            if (config.ticktick_smtp_user and 
+                config.ticktick_smtp_pass and 
+                config.ticktick_email):
+                self.ticktick_api = TickTickAPI(
+                    smtp_host=config.ticktick_smtp_host,
+                    smtp_port=config.ticktick_smtp_port,
+                    smtp_user=config.ticktick_smtp_user,
+                    smtp_pass=config.ticktick_smtp_pass,
+                    ticktick_email=config.ticktick_email
+                )
             
             # AI处理器
             self.ai_processor = AIProcessor(config.ai_provider)
@@ -142,6 +150,7 @@ class QuickNoteApp(QObject):
         self.tray_icon.settings_triggered.connect(self._show_settings)
         self.tray_icon.quit_triggered.connect(self._quit_app)
         self.tray_icon.restart_triggered.connect(self._restart_app)
+        self.tray_icon.restart_hotkey_triggered.connect(self._restart_hotkey_listener)
         self.tray_icon.clipboard_toggled.connect(self._on_clipboard_toggled)
         self.tray_icon.clipboard_history_triggered.connect(self._show_clipboard_history)
         
@@ -167,9 +176,8 @@ class QuickNoteApp(QObject):
                     logger.warning(f"快捷键监听器状态异常: {status}")
                     # 尝试重启
                     if self.hotkey_listener.is_running:
-                        logger.info("尝试手动重启快捷键监听器...")
-                        self.hotkey_listener.stop()
-                        self.hotkey_listener.start()
+                        logger.info("检测到快捷键监听器异常，自动重启...")
+                        self._restart_hotkey_listener()
                 else:
                     # 正常状态，每10分钟记录一次详细信息（避免日志过多）
                     import time
@@ -255,9 +263,17 @@ class QuickNoteApp(QObject):
                 self.flomo_api = FlomoAPI(new_config.flomo_api_url)
                 logger.info("Flomo API已重新初始化")
             
-            if new_config.ticktick_webhook_url:
-                self.ticktick_api = TickTickAPI(new_config.ticktick_webhook_url)
-                logger.info("TickTick API已重新初始化")
+                if (new_config.ticktick_smtp_user and 
+                    new_config.ticktick_smtp_pass and 
+                    new_config.ticktick_email):
+                    self.ticktick_api = TickTickAPI(
+                        smtp_host=new_config.ticktick_smtp_host,
+                        smtp_port=new_config.ticktick_smtp_port,
+                        smtp_user=new_config.ticktick_smtp_user,
+                        smtp_pass=new_config.ticktick_smtp_pass,
+                        ticktick_email=new_config.ticktick_email
+                    )
+                    logger.info("TickTick API已重新初始化")
             
             # 快捷键配置已保存到config.yaml，但需要重启才能生效
             logger.info("快捷键配置已更新，需要重启应用才能生效")
@@ -297,7 +313,7 @@ class QuickNoteApp(QObject):
             self.tray_icon.show_message("处理中", "正在保存到Notion...")
             
             # 从额外参数中提取
-            status = extra_params.get("status", "待办")
+            status = extra_params.get("status", "待处理")
             priority = extra_params.get("priority", "中")
             tags = extra_params.get("tags", [])
             
@@ -340,9 +356,9 @@ class QuickNoteApp(QObject):
                 logger.error("保存到Flomo失败")
                 
         elif platform == "ticktick":
-            # 保存到滴答清单（通过集简云webhook）
+            # 保存到滴答清单（通过邮件）
             if not self.ticktick_api:
-                self.tray_icon.show_message("配置错误", "请先在设置界面配置滴答清单 Webhook")
+                self.tray_icon.show_message("配置错误", "请先在设置界面配置滴答清单邮箱信息")
                 logger.error("TickTick API未初始化")
                 return
             
@@ -485,6 +501,37 @@ class QuickNoteApp(QObject):
             
         except Exception as e:
             logger.error(f"处理剪切板内容失败: {e}")
+    
+    def _restart_hotkey_listener(self):
+        """重启快捷键监听器"""
+        try:
+            logger.info("正在重启快捷键监听器...")
+            
+            # 停止当前监听器
+            if self.hotkey_listener:
+                self.hotkey_listener.stop()
+                import time
+                time.sleep(0.3)  # 等待完全停止
+            
+            # 重新注册快捷键
+            self.hotkey_listener.register(
+                config.hotkey_quick_input,
+                lambda: self.show_quick_input_signal.emit()
+            )
+            self.hotkey_listener.register(
+                config.hotkey_toggle_clipboard,
+                lambda: self.toggle_clipboard_signal.emit()
+            )
+            
+            # 重新启动
+            self.hotkey_listener.start()
+            
+            logger.info("快捷键监听器已重启")
+            self.tray_icon.show_message("快捷键已重启", "快捷键监听器已重新启动 ✅")
+            
+        except Exception as e:
+            logger.error(f"重启快捷键监听器失败: {e}", exc_info=True)
+            self.tray_icon.show_message("重启失败", f"无法重启快捷键监听器: {str(e)}")
     
     def _restart_app(self):
         """重启应用"""

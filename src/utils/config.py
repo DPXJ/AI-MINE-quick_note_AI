@@ -109,9 +109,33 @@ class Config:
         return self.get_env("FLOMO_API_URL")
     
     @property
-    def ticktick_webhook_url(self) -> str:
-        """TickTick (via Jijiyun) Webhook URL"""
-        return self.get_env("TICKTICK_WEBHOOK_URL")
+    def ticktick_smtp_host(self) -> str:
+        """TickTick 邮件发送 - SMTP服务器地址"""
+        return self.get_env("TICKTICK_SMTP_HOST", "smtp.qq.com")
+    
+    @property
+    def ticktick_smtp_port(self) -> int:
+        """TickTick 邮件发送 - SMTP端口"""
+        port_str = self.get_env("TICKTICK_SMTP_PORT", "465")
+        try:
+            return int(port_str)
+        except ValueError:
+            return 465
+    
+    @property
+    def ticktick_smtp_user(self) -> str:
+        """TickTick 邮件发送 - 发件邮箱地址"""
+        return self.get_env("TICKTICK_SMTP_USER")
+    
+    @property
+    def ticktick_smtp_pass(self) -> str:
+        """TickTick 邮件发送 - SMTP授权码"""
+        return self.get_env("TICKTICK_SMTP_PASS")
+    
+    @property
+    def ticktick_email(self) -> str:
+        """TickTick 专属邮箱地址（格式：todo+xxxxx@mail.dida365.com）"""
+        return self.get_env("TICKTICK_EMAIL")
     
     @property
     def hotkey_quick_input(self) -> str:
@@ -169,8 +193,13 @@ class Config:
             logger.warning("未配置FLOMO_API_URL，Flomo功能将不可用")
         
         # 检查TickTick配置（可选）
-        if not self.ticktick_webhook_url:
-            logger.warning("未配置TICKTICK_WEBHOOK_URL，滴答清单功能将不可用（通过集简云 Webhook）")
+        ticktick_configured = (
+            self.ticktick_smtp_user and
+            self.ticktick_smtp_pass and
+            self.ticktick_email
+        )
+        if not ticktick_configured:
+            logger.warning("未配置TickTick邮箱信息，滴答清单功能将不可用（需要：TICKTICK_SMTP_USER, TICKTICK_SMTP_PASS, TICKTICK_EMAIL）")
         
         if errors:
             for error in errors:
