@@ -237,6 +237,23 @@ class QuickNoteApp(QObject):
         # 重新加载YAML配置
         new_config.config = new_config._load_config()
         
+        # 更新快速输入窗口的配置（包括遮罩设置）
+        if self.quick_input_window:
+            try:
+                new_ui_config = new_config.get("ui.quick_input", {})
+                # 更新遮罩配置（从ui节点读取）
+                mask_color = new_config.get('ui.mask_color', [0, 0, 0])
+                mask_alpha = new_config.get('ui.mask_alpha', 153)
+                # 更新遮罩配置
+                self.quick_input_window.config = {
+                    **new_ui_config,
+                    'mask_color': mask_color,
+                    'mask_alpha': mask_alpha,
+                }
+                logger.info(f"快速输入窗口配置已更新（包括遮罩设置: 颜色={mask_color}, 透明度={mask_alpha}）")
+            except Exception as e:
+                logger.error(f"更新快速输入窗口配置失败: {e}", exc_info=True)
+        
         # 更新剪切板监控状态（根据总开关）
         clipboard_monitor_enabled = new_config.config.get('ai_rules', {}).get('clipboard_monitor', True)
         if clipboard_monitor_enabled and new_config.clipboard_enabled:
@@ -453,8 +470,8 @@ class QuickNoteApp(QObject):
                 if category and category not in tags:
                     tags.insert(0, category)
                 
-                # 强制添加标签：QuickNote_AI自动同步
-                forced_tag = "QuickNote_AI自动同步"
+                # 强制添加标签：AI同步
+                forced_tag = "AI同步"
                 if forced_tag not in tags:
                     tags.append(forced_tag)
                 

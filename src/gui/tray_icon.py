@@ -192,20 +192,9 @@ class TrayIcon(QObject):
         msg_box.exec_()
     
     def _restart_app(self):
-        """重启应用"""
-        from PyQt5.QtWidgets import QMessageBox
-        
-        reply = QMessageBox.question(
-            None,
-            "确认重启",
-            "确定要重启 QuickNote AI 吗？\n\n程序将关闭并重新启动。",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            logger.info("用户重启应用")
-            self.restart_triggered.emit()
+        """重启应用（直接重启，无需确认）"""
+        logger.info("用户重启应用")
+        self.restart_triggered.emit()
     
     def _quit_app(self):
         """退出应用"""

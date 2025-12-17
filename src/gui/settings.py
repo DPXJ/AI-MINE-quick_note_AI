@@ -3,10 +3,10 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QTabWidget, QWidget,
     QTextEdit, QCheckBox, QMessageBox, QGroupBox,
-    QComboBox, QScrollArea
+    QComboBox, QScrollArea, QColorDialog
 )
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QColor, QIcon
 from loguru import logger
 from src.gui.hotkey_input import HotkeyInput
 
@@ -125,6 +125,7 @@ class SettingsDialog(QDialog):
         self.tabs.addTab(self._create_api_tab(), "🔑 API配置")
         self.tabs.addTab(self._create_rules_tab(), "🤖 AI规则")
         self.tabs.addTab(self._create_hotkey_tab(), "⌨️ 快捷键")
+        self.tabs.addTab(self._create_system_tab(), "⚙️ 系统设置")
         self.tabs.addTab(self._create_about_tab(), "ℹ️ 关于")
         
         layout.addWidget(self.tabs)
@@ -850,6 +851,81 @@ class SettingsDialog(QDialog):
         widget.setLayout(layout)
         return widget
     
+    def _create_system_tab(self) -> QWidget:
+        """创建系统设置标签页"""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # 遮罩设置组
+        mask_group = QGroupBox()
+        mask_group.setTitle("")
+        mask_layout = QVBoxLayout()
+        
+        # 自定义标题
+        mask_title = QLabel("│ 遮罩设置")
+        mask_title.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                font-weight: bold;
+                color: #007acc;
+                padding: 10px 0;
+                border-bottom: 2px solid #007acc;
+                margin-bottom: 10px;
+            }
+        """)
+        mask_layout.addWidget(mask_title)
+        
+        # 遮罩颜色设置
+        color_layout = QHBoxLayout()
+        color_label = QLabel("遮罩颜色 (RGB):")
+        color_label.setStyleSheet("font-weight: bold; min-width: 120px;")
+        color_layout.addWidget(color_label)
+        
+        # RGB输入框
+        self.mask_color_r = QLineEdit()
+        self.mask_color_r.setPlaceholderText("R (0-255)")
+        self.mask_color_r.setMaximumWidth(80)
+        color_layout.addWidget(self.mask_color_r)
+        
+        self.mask_color_g = QLineEdit()
+        self.mask_color_g.setPlaceholderText("G (0-255)")
+        self.mask_color_g.setMaximumWidth(80)
+        color_layout.addWidget(self.mask_color_g)
+        
+        self.mask_color_b = QLineEdit()
+        self.mask_color_b.setPlaceholderText("B (0-255)")
+        self.mask_color_b.setMaximumWidth(80)
+        color_layout.addWidget(self.mask_color_b)
+        
+        color_layout.addStretch()
+        mask_layout.addLayout(color_layout)
+        
+        # 遮罩透明度设置
+        alpha_layout = QHBoxLayout()
+        alpha_label = QLabel("遮罩透明度 (%):")
+        alpha_label.setStyleSheet("font-weight: bold; min-width: 120px;")
+        alpha_layout.addWidget(alpha_label)
+        
+        self.mask_alpha = QLineEdit()
+        self.mask_alpha.setPlaceholderText("0-100 (例如: 60 表示60%透明度)")
+        self.mask_alpha.setMaximumWidth(200)
+        alpha_layout.addWidget(self.mask_alpha)
+        
+        alpha_hint = QLabel("💡 透明度范围: 0-100，数值越大越不透明")
+        alpha_hint.setStyleSheet("color: #666; font-size: 12px; margin-left: 10px;")
+        alpha_layout.addWidget(alpha_hint)
+        alpha_layout.addStretch()
+        mask_layout.addLayout(alpha_layout)
+        
+        mask_group.setLayout(mask_layout)
+        layout.addWidget(mask_group)
+        
+        layout.addStretch()
+        widget.setLayout(layout)
+        return widget
+    
     def _create_about_tab(self) -> QWidget:
         """创建关于标签页"""
         widget = QWidget()
@@ -962,6 +1038,39 @@ class SettingsDialog(QDialog):
         # 加载快捷键配置（使用HotkeyInput控件）
         self.hotkey_quick.setText(self.config_obj.hotkey_quick_input)
         self.hotkey_clipboard.setText(self.config_obj.hotkey_toggle_clipboard)
+        
+        # 加载遮罩设置
+        try:
+            mask_color = self.config_obj.get('ui.mask_color', [0, 0, 0])  # 默认黑色
+            mask_alpha = self.config_obj.get('ui.mask_alpha', 153)  # 默认alpha值
+            # 将alpha值转换为百分比（0-100）
+            if mask_alpha > 100:
+                mask_alpha_percent = int((mask_alpha / 255) * 100)
+            else:
+                mask_alpha_percent = mask_alpha
+            
+            # 加载颜色到输入框
+            if hasattr(self, 'mask_color_r') and hasattr(self, 'mask_color_g') and hasattr(self, 'mask_color_b'):
+                if isinstance(mask_color, list) and len(mask_color) >= 3:
+                    self.mask_color_r.setText(str(mask_color[0]))
+                    self.mask_color_g.setText(str(mask_color[1]))
+                    self.mask_color_b.setText(str(mask_color[2]))
+                else:
+                    self.mask_color_r.setText("0")
+                    self.mask_color_g.setText("0")
+                    self.mask_color_b.setText("0")
+            
+            # 加载透明度
+            if hasattr(self, 'mask_alpha'):
+                self.mask_alpha.setText(str(mask_alpha_percent))
+        except Exception as e:
+            logger.warning(f"加载遮罩设置失败: {e}，使用默认值")
+            if hasattr(self, 'mask_color_r') and hasattr(self, 'mask_color_g') and hasattr(self, 'mask_color_b'):
+                self.mask_color_r.setText("0")
+                self.mask_color_g.setText("0")
+                self.mask_color_b.setText("0")
+            if hasattr(self, 'mask_alpha'):
+                self.mask_alpha.setText("60")
         
         # 加载AI规则
         try:
@@ -1101,6 +1210,51 @@ TICKTICK_EMAIL={self.ticktick_email.text()}
                     config_data = yaml.safe_load(f) or {}
             else:
                 config_data = {}
+            
+            # 更新遮罩设置
+            if 'ui' not in config_data:
+                config_data['ui'] = {}
+            
+            # 读取遮罩颜色RGB值
+            try:
+                if hasattr(self, 'mask_color_r') and hasattr(self, 'mask_color_g') and hasattr(self, 'mask_color_b'):
+                    mask_r_text = self.mask_color_r.text().strip() if self.mask_color_r.text() else "0"
+                    mask_g_text = self.mask_color_g.text().strip() if self.mask_color_g.text() else "0"
+                    mask_b_text = self.mask_color_b.text().strip() if self.mask_color_b.text() else "0"
+                    
+                    mask_r = int(mask_r_text) if mask_r_text else 0
+                    mask_g = int(mask_g_text) if mask_g_text else 0
+                    mask_b = int(mask_b_text) if mask_b_text else 0
+                    
+                    # 限制范围
+                    mask_r = max(0, min(255, mask_r))
+                    mask_g = max(0, min(255, mask_g))
+                    mask_b = max(0, min(255, mask_b))
+                    config_data['ui']['mask_color'] = [mask_r, mask_g, mask_b]
+                elif hasattr(self, '_mask_color'):
+                    # 如果使用颜色选择器
+                    config_data['ui']['mask_color'] = self._mask_color
+                else:
+                    config_data['ui']['mask_color'] = [0, 0, 0]
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"读取遮罩颜色失败: {e}，使用默认值")
+                config_data['ui']['mask_color'] = [0, 0, 0]
+            
+            # 读取遮罩透明度百分比
+            try:
+                if hasattr(self, 'mask_alpha'):
+                    mask_alpha_text = self.mask_alpha.text().strip() if self.mask_alpha.text() else "60"
+                    mask_alpha_percent = int(mask_alpha_text) if mask_alpha_text else 60
+                    # 限制范围
+                    mask_alpha_percent = max(0, min(100, mask_alpha_percent))
+                    # 转换为alpha值（0-255）
+                    mask_alpha = int((mask_alpha_percent / 100) * 255)
+                    config_data['ui']['mask_alpha'] = mask_alpha
+                else:
+                    config_data['ui']['mask_alpha'] = 153
+            except (ValueError, AttributeError) as e:
+                logger.warning(f"读取遮罩透明度失败: {e}，使用默认值")
+                config_data['ui']['mask_alpha'] = 153
             
             # 更新快捷键配置
             if 'hotkeys' not in config_data:

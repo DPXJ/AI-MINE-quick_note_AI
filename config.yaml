@@ -106,3 +106,8 @@ ui:
     foreground: '#ffffff'
     accent: '#007acc'
     border: '#3c3c3c'
+  mask_color:
+  - 0
+  - 0
+  - 0
+  mask_alpha: 255

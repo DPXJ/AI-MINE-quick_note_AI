@@ -82,16 +82,8 @@ class TickTickAPI:
                 # 注意：时间信息通常已经在 title 中（AI 提取时会保留原始时间描述）
                 # 如果 title 中没有时间信息，可以考虑添加，但为了保持标题简洁，这里不自动添加
             
-            # 构建邮件正文
+            # 构建邮件正文（只使用原始内容，不添加截止时间）
             email_body = content or ""
-            
-            # 如果有额外备注，添加到正文
-            if extra:
-                notes = []
-                if extra.get("due_date"):
-                    notes.append(f"截止时间: {extra.get('due_date')}")
-                if notes:
-                    email_body = f"{email_body}\n\n" + "\n".join(notes) if email_body else "\n".join(notes)
             
             logger.info(
                 f"发送任务到 TickTick (Email): subject={email_subject[:50]}..., "

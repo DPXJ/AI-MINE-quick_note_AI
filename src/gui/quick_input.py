@@ -1,7 +1,7 @@
 """快速输入窗口"""
-from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QButtonGroup
+from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QButtonGroup, QApplication
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
-from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent
+from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent, QCursor, QPainter, QBrush
 from loguru import logger
 
 
@@ -35,6 +35,91 @@ class CustomTextEdit(QTextEdit):
         super().keyPressEvent(event)
 
 
+class PinButton(QPushButton):
+    """自定义置顶按钮，支持不同颜色的圆点"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._is_pinned = True
+        self._fg_color = "#e8e8e8"
+        self.setFlat(True)  # 扁平按钮，无默认背景
+        
+    def setPinned(self, pinned: bool):
+        """设置置顶状态"""
+        self._is_pinned = pinned
+        self.update()  # 触发重绘
+        
+    def paintEvent(self, event):
+        """绘制按钮（包含不同颜色的圆点）"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # 绘制背景（如果有hover效果）
+        if self.underMouse():
+            painter.fillRect(self.rect(), QColor(0, 212, 255, 51))  # rgba(0, 212, 255, 0.2)
+        
+        # 设置字体（调小2个字号：从13px改为11px）
+        font = QFont('Microsoft YaHei', 11)
+        painter.setFont(font)
+        
+        # 根据状态设置圆点颜色
+        if self._is_pinned:
+            # 已置顶：绿色圆点
+            dot_color = QColor(76, 175, 80)  # #4caf50
+            text = "已置顶"
+        else:
+            # 未置顶：红色圆点
+            dot_color = QColor(244, 67, 54)  # #f44336
+            text = "未置顶"
+        
+        # 绘制圆点
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(dot_color))
+        dot_radius = 4
+        dot_x = 8
+        dot_y = self.height() // 2
+        painter.drawEllipse(dot_x - dot_radius, dot_y - dot_radius, dot_radius * 2, dot_radius * 2)
+        
+        # 绘制文字
+        painter.setPen(QColor(self._fg_color))
+        text_x = dot_x + dot_radius * 2 + 6
+        text_y = self.height() // 2 + 5  # 垂直居中（字体基线）
+        painter.drawText(text_x, text_y, text)
+
+
+class OverlayMaskWidget(QWidget):
+    """全屏遮罩窗口（自定义绘制半透明背景）"""
+    
+    def __init__(self, geometry, mask_color=(0, 0, 0), mask_alpha=153, on_click_callback=None, parent=None):
+        super().__init__(parent)
+        self.setGeometry(geometry)
+        self.mask_color = mask_color  # RGB颜色元组
+        self.mask_alpha = mask_alpha  # 透明度（0-255）
+        self.on_click_callback = on_click_callback  # 点击回调函数
+        self.setWindowFlags(
+            Qt.FramelessWindowHint |
+            Qt.WindowStaysOnTopHint |
+            Qt.Tool |
+            Qt.X11BypassWindowManagerHint |
+            Qt.WindowDoesNotAcceptFocus
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        # 注意：不使用 WA_TransparentForMouseEvents，确保遮罩可见且可点击
+        
+    def mousePressEvent(self, event):
+        """点击遮罩时关闭输入窗口"""
+        if self.on_click_callback:
+            self.on_click_callback()
+        super().mousePressEvent(event)
+        
+    def paintEvent(self, event):
+        """绘制半透明背景"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        # 使用配置的颜色和透明度
+        painter.fillRect(self.rect(), QColor(*self.mask_color, self.mask_alpha))
+
+
 class QuickInputWindow(QWidget):
     """快速输入窗口"""
     
@@ -51,6 +136,8 @@ class QuickInputWindow(QWidget):
         super().__init__()
         self.config = config
         self.drag_position = None  # 用于拖动窗口
+        self._mask_widgets = []  # 全屏遮罩列表
+        self._is_always_on_top = True  # 默认置顶
         self._init_ui()
         logger.info("快速输入窗口已初始化")
     
@@ -64,13 +151,9 @@ class QuickInputWindow(QWidget):
         # 窗口属性
         self.setWindowTitle("QuickNote - 快速输入")
         
-        # 窗口标志：无边框、普通窗口（可最小化）、保持在上层但不是置顶
-        self.setWindowFlags(
-            Qt.FramelessWindowHint |
-            Qt.Window |  # 普通窗口，可以最小化
-            Qt.WindowStaysOnTopHint |  # 保持在顶层，确保快捷键调用时可见
-            Qt.X11BypassWindowManagerHint  # 绕过窗口管理器（Windows上无影响，但确保圆角正常）
-        )
+        # 窗口标志：无边框、普通窗口（可最小化）
+        # 置顶状态通过 _update_window_flags 方法动态设置
+        self._update_window_flags()
         
         # 窗口大小（固定物理像素，补偿外边距）
         width = 930  # 固定宽度（增加30以补偿边距）
@@ -156,6 +239,32 @@ class QuickInputWindow(QWidget):
         """)
         title_layout.addWidget(self.title_label)
         title_layout.addStretch()
+        
+        # 置顶开关按钮（使用自定义文字按钮）
+        self.pin_btn = PinButton()
+        self.pin_btn.setCheckable(True)
+        self.pin_btn.setChecked(True)  # 默认置顶
+        self.pin_btn.setPinned(True)  # 默认置顶
+        self.pin_btn.setFixedHeight(40)
+        self.pin_btn.setMinimumWidth(90)
+        self.pin_btn.setToolTip("点击切换置顶状态")
+        self.pin_btn._fg_color = fg_color
+        # 设置按钮样式
+        self.pin_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                font-size: 13px;
+                color: {fg_color};
+                font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
+            }}
+            QPushButton:hover {{
+                background: rgba(0, 212, 255, 0.2);
+                border-radius: 8px;
+            }}
+        """)
+        self.pin_btn.clicked.connect(self._toggle_always_on_top)
+        title_layout.addWidget(self.pin_btn)
         
         # 最小化按钮
         minimize_btn = QPushButton("─")
@@ -331,16 +440,17 @@ class QuickInputWindow(QWidget):
         self.notion_options = QWidget()
         notion_options_layout = QHBoxLayout()
         notion_options_layout.setContentsMargins(0, 0, 0, 0)
-        notion_options_layout.setSpacing(15)  # 增加间距从12到15
+        notion_options_layout.setSpacing(10)  # 缩小间距：15 * 0.7 = 10.5，取整为10
         
         # 状态选择（改为按钮组）
         status_label = QLabel("状态:")
-        status_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 50px;")  # 增加最小宽度
+        # 增大字体，使用微软雅黑
+        status_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 35px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
         notion_options_layout.addWidget(status_label)
         
         # 状态按钮组
         status_btn_group = QHBoxLayout()
-        status_btn_group.setSpacing(6)
+        status_btn_group.setSpacing(4)  # 缩小间距：6 * 0.7 = 4.2，取整为4
         status_btn_group.setContentsMargins(0, 0, 0, 0)
         self.notion_status_group = QButtonGroup()
         self.notion_status_buttons = {}
@@ -349,8 +459,10 @@ class QuickInputWindow(QWidget):
         for i, option in enumerate(status_options):
             btn = QPushButton(option)
             btn.setCheckable(True)
-            btn.setFixedHeight(36)
-            btn.setMinimumWidth(75)  # 稍微增加宽度以适应"待处理"
+            # 缩小30%：36 * 0.7 = 25.2，取整为25
+            btn.setFixedHeight(25)
+            # 缩小30%：75 * 0.7 = 52.5，取整为53
+            btn.setMinimumWidth(53)
             if i == 0:  # 默认选中"待处理"
                 btn.setChecked(True)
             btn.setStyleSheet(f"""
@@ -358,9 +470,10 @@ class QuickInputWindow(QWidget):
                     background: transparent;
                     color: white;
                     border: 1px solid {border_color};
-                    border-radius: 8px;
-                    padding: 8px 16px;
-                    font-size: 14px;
+                    border-radius: 6px;
+                    padding: 4px 10px;
+                    font-size: 13px;
+                    font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
                 }}
                 QPushButton:hover {{
                     border: 1px solid {accent_color};
@@ -381,12 +494,13 @@ class QuickInputWindow(QWidget):
         
         # 优先级选择（改为按钮组）
         priority_label = QLabel("优先级:")
-        priority_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 60px;")  # 增加最小宽度
+        # 增大字体，使用微软雅黑
+        priority_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 42px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
         notion_options_layout.addWidget(priority_label)
         
         # 优先级按钮组
         priority_btn_group = QHBoxLayout()
-        priority_btn_group.setSpacing(6)
+        priority_btn_group.setSpacing(4)  # 缩小间距：6 * 0.7 = 4.2，取整为4
         priority_btn_group.setContentsMargins(0, 0, 0, 0)
         self.notion_priority_group = QButtonGroup()
         self.notion_priority_buttons = {}
@@ -395,8 +509,10 @@ class QuickInputWindow(QWidget):
         for i, option in enumerate(priority_options):
             btn = QPushButton(option)
             btn.setCheckable(True)
-            btn.setFixedHeight(36)
-            btn.setMinimumWidth(60)
+            # 缩小30%：36 * 0.7 = 25.2，取整为25
+            btn.setFixedHeight(25)
+            # 缩小30%：60 * 0.7 = 42，取整为42
+            btn.setMinimumWidth(42)
             if i == 1:  # 默认选中"中"
                 btn.setChecked(True)
             btn.setStyleSheet(f"""
@@ -404,9 +520,10 @@ class QuickInputWindow(QWidget):
                     background: transparent;
                     color: white;
                     border: 1px solid {border_color};
-                    border-radius: 8px;
-                    padding: 8px 16px;
-                    font-size: 14px;
+                    border-radius: 6px;
+                    padding: 4px 10px;
+                    font-size: 13px;
+                    font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
                 }}
                 QPushButton:hover {{
                     border: 1px solid {accent_color};
@@ -427,22 +544,26 @@ class QuickInputWindow(QWidget):
         
         # 标签输入
         tags_label_notion = QLabel("标签:")
-        tags_label_notion.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 50px;")  # 增加最小宽度
+        # 增大字体，使用微软雅黑
+        tags_label_notion.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 35px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
         notion_options_layout.addWidget(tags_label_notion)
         
         self.notion_tags = QLineEdit()
         self.notion_tags.setText("灵感")  # 默认标签
         self.notion_tags.setPlaceholderText("多个标签用空格分隔")
-        self.notion_tags.setMinimumWidth(200)  # 设置最小宽度，避免太窄
+        # 缩小30%：200 * 0.7 = 140
+        self.notion_tags.setMinimumWidth(140)
+        self.notion_tags.setFixedHeight(25)  # 缩小30%：36 * 0.7 = 25.2，取整为25
         self.notion_tags.setStyleSheet(f"""
             QLineEdit {{
                 background: {bg_input};
                 color: {fg_color};
                 border: 1px solid {border_color};
-                border-radius: 8px;
-                padding: 8px 14px;
+                border-radius: 6px;
+                padding: 4px 10px;
                 font-size: 13px;
-                min-width: 200px;
+                font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
+                min-width: 140px;
             }}
             QLineEdit:focus {{
                 border: 2px solid {accent_color};
@@ -450,6 +571,7 @@ class QuickInputWindow(QWidget):
             }}
             QLineEdit::placeholder {{
                 color: {fg_secondary};
+                font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
             }}
         """)
         notion_options_layout.addWidget(self.notion_tags, stretch=2)  # 增加stretch值，让标签输入框更宽
@@ -633,36 +755,221 @@ class QuickInputWindow(QWidget):
             self.move(event.globalPos() - self.drag_position)
             event.accept()
     
-    def show_at_center(self):
-        """显示在屏幕中央"""
-        # 获取屏幕几何信息（主屏幕）
-        from PyQt5.QtWidgets import QApplication
-        screen = QApplication.primaryScreen().geometry()
+    def _update_window_flags(self):
+        """更新窗口标志（根据置顶状态）"""
+        # 保存当前窗口位置和大小
+        current_pos = self.pos()
+        current_size = self.size()
+        is_visible = self.isVisible()
         
-        # 计算中心位置
-        x = (screen.width() - self.width()) // 2
-        y = (screen.height() - self.height()) // 2
+        flags = (
+            Qt.FramelessWindowHint |
+            Qt.Window |  # 普通窗口，可以最小化
+            Qt.X11BypassWindowManagerHint  # 绕过窗口管理器（Windows上无影响，但确保圆角正常）
+        )
+        if self._is_always_on_top:
+            flags |= Qt.WindowStaysOnTopHint  # 保持在顶层
+        
+        self.setWindowFlags(flags)
+        # 恢复窗口位置和大小
+        self.move(current_pos)
+        self.resize(current_size)
+        
+        # 重新显示窗口以应用新的标志
+        if is_visible:
+            self.show()
+            self.raise_()
+            self.activateWindow()
+    
+    def _toggle_always_on_top(self):
+        """切换置顶状态"""
+        # 获取按钮的当前状态（点击后会自动切换）
+        checked = self.pin_btn.isChecked()
+        self._is_always_on_top = checked
+        
+        # 更新自定义按钮的置顶状态（触发重绘）
+        self.pin_btn.setPinned(checked)
+        
+        # 根据置顶状态创建或移除遮罩
+        if checked:
+            # 置顶时：创建遮罩
+            self._create_overlay_mask()
+        else:
+            # 未置顶时：移除遮罩
+            self._remove_overlay_mask()
+        
+        # 延迟更新窗口标志，避免窗口关闭
+        QTimer.singleShot(50, self._update_window_flags)
+        
+        logger.info(f"窗口置顶状态已切换: {self._is_always_on_top}, 按钮文字: {'已置顶' if checked else '未置顶'}, 遮罩: {'已创建' if checked else '已移除'}")
+    
+    def _create_overlay_mask(self):
+        """创建全屏遮罩（使用自定义绘制窗口，可配置颜色和透明度）"""
+        # 如果已经创建过，先移除
+        if self._mask_widgets:
+            self._remove_overlay_mask()
+        
+        # 从配置读取遮罩颜色和透明度
+        # 默认：黑色，透明度60%（alpha=153）
+        mask_color_rgb = self.config.get('mask_color', self.config.get('ui.mask_color', [0, 0, 0]))  # 默认黑色
+        mask_alpha = self.config.get('mask_alpha', self.config.get('ui.mask_alpha', 153))  # 默认60%透明度（255*0.6≈153）
+        
+        # 确保颜色是元组格式
+        if isinstance(mask_color_rgb, list):
+            mask_color = tuple(mask_color_rgb)
+        else:
+            mask_color = (0, 0, 0)  # 默认黑色
+        
+        # 点击遮罩时关闭输入窗口的回调
+        def on_mask_clicked():
+            logger.info("遮罩被点击，关闭输入窗口")
+            self.hide()
+        
+        # 在所有屏幕上显示遮罩
+        screens = QApplication.screens()
+        for screen in screens:
+            geometry = screen.geometry()
+            # 使用自定义遮罩窗口类，传递颜色、透明度和点击回调
+            mask = OverlayMaskWidget(
+                geometry, 
+                mask_color=mask_color, 
+                mask_alpha=mask_alpha,
+                on_click_callback=on_mask_clicked
+            )
+            
+            # 显示遮罩
+            mask.show()
+            mask.raise_()  # 确保遮罩显示在最上层
+            
+            # 保存引用以便后续关闭
+            self._mask_widgets.append(mask)
+            
+            logger.debug(f"遮罩已创建: {geometry}, 颜色: {mask_color}, 透明度: {mask_alpha}, 可见: {mask.isVisible()}")
+        
+        # 延迟确保输入窗口在遮罩上方
+        # 使用多次延迟和 Windows API 确保窗口层级正确
+        def ensure_on_top():
+            try:
+                import ctypes
+                # 先确保所有遮罩窗口显示并设置为 TOPMOST
+                for mask in self._mask_widgets:
+                    if mask.isVisible():
+                        mask_hwnd = int(mask.winId())
+                        # 遮罩窗口设置为 HWND_TOPMOST
+                        ctypes.windll.user32.SetWindowPos(
+                            mask_hwnd,
+                            -2,  # HWND_TOPMOST
+                            0, 0, 0, 0,
+                            0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
+                        )
+                        # 强制刷新遮罩窗口
+                        ctypes.windll.user32.ShowWindow(mask_hwnd, 1)  # SW_SHOWNORMAL
+                
+                # 然后确保输入窗口在最上层（在所有遮罩之上）
+                hwnd = int(self.winId())
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd,
+                    -1,  # HWND_TOP - 置顶（在所有遮罩之上）
+                    0, 0, 0, 0,
+                    0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
+                )
+            except Exception as e:
+                logger.warning(f"设置窗口层级失败: {e}")
+            
+            self.raise_()
+            self.activateWindow()
+        
+        # 多次延迟确保窗口层级正确
+        QTimer.singleShot(10, ensure_on_top)
+        QTimer.singleShot(50, ensure_on_top)
+        QTimer.singleShot(100, ensure_on_top)
+        QTimer.singleShot(200, ensure_on_top)
+        QTimer.singleShot(500, ensure_on_top)  # 增加一次延迟
+        
+        logger.info(f"遮罩已创建，数量: {len(self._mask_widgets)}, 屏幕数: {len(screens)}")
+    
+    def _remove_overlay_mask(self):
+        """移除全屏遮罩"""
+        if self._mask_widgets:
+            for mask in self._mask_widgets:
+                try:
+                    mask.close()
+                    mask.deleteLater()
+                except:
+                    pass
+            self._mask_widgets.clear()
+    
+    def _get_screen_at_cursor(self):
+        """获取鼠标所在屏幕"""
+        cursor_pos = QCursor.pos()
+        screens = QApplication.screens()
+        
+        for screen in screens:
+            geometry = screen.geometry()
+            if geometry.contains(cursor_pos):
+                return screen
+        
+        # 如果找不到，返回主屏幕
+        return QApplication.primaryScreen()
+    
+    def show_at_center(self):
+        """显示在鼠标所在屏幕的中央"""
+        # 只有置顶时才创建遮罩
+        if self._is_always_on_top:
+            self._create_overlay_mask()
+        
+        # 获取鼠标所在屏幕
+        screen = self._get_screen_at_cursor()
+        screen_geometry = screen.geometry()
+        
+        # 计算中心位置（相对于该屏幕）
+        x = screen_geometry.x() + (screen_geometry.width() - self.width()) // 2
+        y = screen_geometry.y() + (screen_geometry.height() - self.height()) // 2
         
         self.move(x, y)
         
         # 确保窗口显示并获取焦点
         self.show()
-        self.raise_()
-        self.activateWindow()
         
-        # 在 Windows 上强制激活窗口
-        try:
-            import ctypes
-            hwnd = int(self.winId())
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
-        except:
-            pass
+        # 强制确保输入窗口在遮罩上方（多次尝试）
+        def ensure_on_top():
+            self.raise_()
+            self.activateWindow()
+            # 在 Windows 上强制激活窗口
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+                # 确保窗口在顶层
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd, 
+                    -1,  # HWND_TOP
+                    0, 0, 0, 0,
+                    0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
+                )
+            except:
+                pass
+        
+        # 延迟确保窗口在顶层（多次尝试确保成功）
+        QTimer.singleShot(10, ensure_on_top)
+        QTimer.singleShot(50, ensure_on_top)
+        QTimer.singleShot(100, ensure_on_top)
+        QTimer.singleShot(200, ensure_on_top)
         
         # 延迟聚焦到输入框，确保窗口已完全激活
-        QTimer.singleShot(50, lambda: self.text_edit.setFocus())
-        QTimer.singleShot(100, lambda: self.text_edit.setFocus())  # 双重保险
+        QTimer.singleShot(250, lambda: self.text_edit.setFocus())
         
-        logger.info("快速输入窗口已显示")
+        logger.info(f"快速输入窗口已显示在屏幕: {screen.name()}, 遮罩数量: {len(self._mask_widgets)}")
+    
+    def hide(self):
+        """隐藏窗口并移除遮罩"""
+        self._remove_overlay_mask()
+        super().hide()
+    
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+        self._remove_overlay_mask()
+        super().closeEvent(event)
     
     
     def keyPressEvent(self, event: QKeyEvent):
