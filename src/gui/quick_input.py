@@ -104,10 +104,14 @@ class OverlayMaskWidget(QWidget):
             Qt.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        # 注意：不使用 WA_TransparentForMouseEvents，确保遮罩可见且可点击
+        # 设置鼠标事件穿透，让输入窗口可以接收鼠标事件
+        # 注意：遮罩只用于视觉效果，不拦截鼠标事件
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         
     def mousePressEvent(self, event):
-        """点击遮罩时关闭输入窗口"""
+        """点击遮罩时关闭输入窗口（但鼠标事件已穿透，这个不会被调用）"""
+        # 由于设置了 WA_TransparentForMouseEvents，这个事件不会被触发
+        # 点击遮罩关闭窗口的功能改为在输入窗口失去焦点时实现
         if self.on_click_callback:
             self.on_click_callback()
         super().mousePressEvent(event)
@@ -138,6 +142,8 @@ class QuickInputWindow(QWidget):
         self.drag_position = None  # 用于拖动窗口
         self._mask_widgets = []  # 全屏遮罩列表
         self._is_always_on_top = True  # 默认置顶
+        # 确保窗口可以接收输入法事件（支持中文输入）
+        self.setAttribute(Qt.WA_InputMethodEnabled, True)
         self._init_ui()
         logger.info("快速输入窗口已初始化")
     
@@ -867,9 +873,10 @@ class QuickInputWindow(QWidget):
                 
                 # 然后确保输入窗口在最上层（在所有遮罩之上）
                 hwnd = int(self.winId())
+                # 使用 HWND_TOPMOST 确保输入窗口在遮罩之上，并且可以接收鼠标事件
                 ctypes.windll.user32.SetWindowPos(
                     hwnd,
-                    -1,  # HWND_TOP - 置顶（在所有遮罩之上）
+                    -2,  # HWND_TOPMOST - 置顶（在所有遮罩之上）
                     0, 0, 0, 0,
                     0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
                 )
