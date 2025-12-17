@@ -936,7 +936,7 @@ class SettingsDialog(QDialog):
         <div style="text-align: center;">
             <h1 style="color: #007acc;">QuickNote AI</h1>
             <p style="font-size: 14px; color: #666;">智能笔记助手</p>
-            <p style="font-size: 12px;"><b>版本:</b> 1.0.0</p>
+            <p style="font-size: 12px;"><b>版本:</b> 0.33</p>
             
             <hr style="margin: 20px 0; border: none; border-top: 1px solid #ccc;">
             

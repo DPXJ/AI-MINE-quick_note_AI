@@ -12,7 +12,7 @@ if sys.platform == 'win32':
 
 # 定义路径
 dist_dir = Path('dist')
-version = 'QuickNote_AI_v0.32'
+version = 'QuickNote_AI_v0.33'
 package_dir = dist_dir / f'分发包_{version}'
 zip_path = dist_dir / f'QuickNote_AI_分发包_v{version.split("_v")[1]}.zip'
 
@@ -62,7 +62,7 @@ if not readme_path.exists():
 
 ## 📦 文件说明
 
-- `QuickNote_AI_v0.32\\` - 主程序文件夹（包含所有运行文件）
+- `QuickNote_AI_v0.33\\` - 主程序文件夹（包含所有运行文件）
 - `config.yaml.example` - 配置文件模板（可选，程序会自动创建）
 - `.env.example` - 环境变量配置模板（可选，程序会自动创建）
 
@@ -70,8 +70,8 @@ if not readme_path.exists():
 
 ### 第一步：运行程序
 
-1. 进入 `QuickNote_AI_v0.32\\` 文件夹
-2. 双击 `QuickNote_AI_v0.32.exe` 运行程序
+1. 进入 `QuickNote_AI_v0.33\\` 文件夹
+2. 双击 `QuickNote_AI_v0.33.exe` 运行程序
 3. 程序会最小化到系统托盘（任务栏右下角）
 4. 右键托盘图标 → 选择"设置"打开配置界面
 
