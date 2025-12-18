@@ -337,9 +337,10 @@ class SelectedDotButton(QPushButton):
             dot_color = QColor(76, 175, 80)  # #4caf50
             painter.setPen(Qt.NoPen)
             painter.setBrush(QBrush(dot_color))
-            r = 4
-            x = rect.right() - 10
-            y = rect.top() + 10
+            # 调小 50%
+            r = 2
+            x = rect.right() - 8
+            y = rect.top() + 8
             painter.drawEllipse(x - r, y - r, r * 2, r * 2)
 
 
