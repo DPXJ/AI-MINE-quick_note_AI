@@ -39,6 +39,7 @@ from src.core.ai_processor import AIProcessor
 from src.integrations.notion_api import NotionAPI
 from src.integrations.flomo_api import FlomoAPI
 from src.integrations.ticktick_api import TickTickAPI
+from src.utils.clipboard_dedupe import ClipboardDedupeStore
 
 
 class QuickNoteApp(QObject):
@@ -132,6 +133,21 @@ class QuickNoteApp(QObject):
                 check_interval=config.clipboard_check_interval,
                 min_length=config.clipboard_min_length,
                 max_length=config.clipboard_max_length
+            )
+
+            # 剪切板自动同步去重（跨重启持久化；仅影响自动同步，不影响手动输入）
+            dedupe_enabled = config.get("clipboard.dedupe.enabled", True)
+            dedupe_ttl_hours = config.get("clipboard.dedupe.ttl_hours", 48)
+            try:
+                dedupe_ttl_seconds = int(float(dedupe_ttl_hours) * 3600)
+            except Exception:
+                dedupe_ttl_seconds = 48 * 3600
+            dedupe_persist = config.get("clipboard.dedupe.persist", True)
+            dedupe_path = config.root_dir / "data" / "clipboard_dedupe.json"
+            self.clipboard_dedupe = ClipboardDedupeStore(
+                path=dedupe_path if dedupe_persist else (config.root_dir / "data" / "clipboard_dedupe.tmp.json"),
+                ttl_seconds=dedupe_ttl_seconds,
+                enabled=bool(dedupe_enabled),
             )
             
             # 检查总开关（从ai_rules读取）
@@ -429,6 +445,19 @@ class QuickNoteApp(QObject):
     def _on_clipboard_content(self, content: str):
         """处理剪切板内容"""
         logger.info(f"检测到剪切板内容: {content[:50]}...")
+
+        # 自动同步去重：一两天内重复复制的内容直接忽略（不调用AI，不同步）
+        dedupe_decision = None
+        try:
+            if hasattr(self, "clipboard_dedupe") and self.clipboard_dedupe:
+                dedupe_decision = self.clipboard_dedupe.check(content)
+                if dedupe_decision.is_duplicate:
+                    logger.info(
+                        f"剪切板内容命中去重缓存，已忽略（age={dedupe_decision.age_seconds}s, fp={dedupe_decision.fingerprint[:8]}）"
+                    )
+                    return
+        except Exception as e:
+            logger.warning(f"剪切板去重检查失败，将继续处理: {e}")
         
         if not self.ai_processor:
             logger.warning("AI处理器未初始化，跳过剪切板内容处理")
@@ -469,6 +498,12 @@ class QuickNoteApp(QObject):
                         f"{title or content[:30]}"
                     )
                     logger.info("剪切板内容已保存到Notion")
+                    # 记录去重（仅成功后）
+                    try:
+                        if dedupe_decision and hasattr(self, "clipboard_dedupe") and self.clipboard_dedupe:
+                            self.clipboard_dedupe.mark_fingerprint(dedupe_decision.fingerprint)
+                    except Exception as e:
+                        logger.warning(f"写入剪切板去重缓存失败: {e}")
                 
             elif target_type == "flomo" and self.flomo_api:
                 # 保存到Flomo
@@ -490,6 +525,11 @@ class QuickNoteApp(QObject):
                         f"{content[:30]}..."
                     )
                     logger.info("剪切板内容已保存到Flomo")
+                    try:
+                        if dedupe_decision and hasattr(self, "clipboard_dedupe") and self.clipboard_dedupe:
+                            self.clipboard_dedupe.mark_fingerprint(dedupe_decision.fingerprint)
+                    except Exception as e:
+                        logger.warning(f"写入剪切板去重缓存失败: {e}")
             
             elif target_type == "ticktick" and self.ticktick_api:
                 # 保存到滴答清单
@@ -522,6 +562,11 @@ class QuickNoteApp(QObject):
                         f"{content[:30]}..."
                     )
                     logger.info("剪切板内容已保存到滴答清单")
+                    try:
+                        if dedupe_decision and hasattr(self, "clipboard_dedupe") and self.clipboard_dedupe:
+                            self.clipboard_dedupe.mark_fingerprint(dedupe_decision.fingerprint)
+                    except Exception as e:
+                        logger.warning(f"写入剪切板去重缓存失败: {e}")
             
         except Exception as e:
             logger.error(f"处理剪切板内容失败: {e}")

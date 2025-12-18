@@ -9,6 +9,10 @@ clipboard:
   check_interval: 1.0
   min_length: 10
   max_length: 5000
+  dedupe:
+    enabled: true
+    ttl_hours: 48
+    persist: true
 ai_rules:
   flomo:
     keywords:
@@ -41,7 +45,7 @@ ai_rules:
       \n**Output:**\n许多人错把“情绪价值”当成了“核心竞争力”。在AI时代，无法被算法量化的“决策力”和“审美力”，才是人类最后的护城河。咖啡好喝是感官体验，但理解咖啡贸易背后的全球化博弈，才是认知升级。\n\
       #深度洞察 #AI认知\n\n**Input 4 (History/Philosophy):**\n\"人类从历史中学到的唯一教训，就是人类无法从历史中学到任何教训。黑格尔这句名言，道尽了人性的短视与循环。\"\
       \n**Output:**\n人类从历史中学到的唯一教训，就是人类无法从历史中学到任何教训。黑格尔这句名言，道尽了人性的短视与循环。\n#历史智慧 #人性\n\
-      \n## Initialization\n我是你的炼狱级认知萃取师。请发送内容，如果是生活琐事或低密度废话，我将直接销毁；只有真正的智慧，才配留下。"
+      \n## Initialization\n我是你的炼狱级认知萃取师。请发送内容，如果是生活琐事或低密度废话，我将直接销毁；只有真正的智慧，才配留下。。"
     enabled: true
   notion:
     keywords:
