@@ -1100,7 +1100,8 @@ class SettingsDialog(QDialog):
         # 加载遮罩设置
         try:
             mask_color = self.config_obj.get('ui.mask_color', [0, 0, 0])  # 默认黑色
-            mask_alpha = self.config_obj.get('ui.mask_alpha', 153)  # 默认alpha值
+            # 默认 100% 不透明（alpha=255），启动即生效
+            mask_alpha = self.config_obj.get('ui.mask_alpha', 255)  # 默认alpha值
             # 将alpha值转换为百分比（0-100）
             if mask_alpha > 100:
                 mask_alpha_percent = int((mask_alpha / 255) * 100)
@@ -1128,7 +1129,7 @@ class SettingsDialog(QDialog):
                 self.mask_color_g.setText("0")
                 self.mask_color_b.setText("0")
             if hasattr(self, 'mask_alpha'):
-                self.mask_alpha.setText("60")
+                self.mask_alpha.setText("100")
         
         # 加载AI规则
         try:
@@ -1301,18 +1302,18 @@ TICKTICK_EMAIL={self.ticktick_email.text()}
             # 读取遮罩透明度百分比
             try:
                 if hasattr(self, 'mask_alpha'):
-                    mask_alpha_text = self.mask_alpha.text().strip() if self.mask_alpha.text() else "60"
-                    mask_alpha_percent = int(mask_alpha_text) if mask_alpha_text else 60
+                    mask_alpha_text = self.mask_alpha.text().strip() if self.mask_alpha.text() else "100"
+                    mask_alpha_percent = int(mask_alpha_text) if mask_alpha_text else 100
                     # 限制范围
                     mask_alpha_percent = max(0, min(100, mask_alpha_percent))
                     # 转换为alpha值（0-255）
                     mask_alpha = int((mask_alpha_percent / 100) * 255)
                     config_data['ui']['mask_alpha'] = mask_alpha
                 else:
-                    config_data['ui']['mask_alpha'] = 153
+                    config_data['ui']['mask_alpha'] = 255
             except (ValueError, AttributeError) as e:
                 logger.warning(f"读取遮罩透明度失败: {e}，使用默认值")
-                config_data['ui']['mask_alpha'] = 153
+                config_data['ui']['mask_alpha'] = 255
             
             # 更新快捷键配置
             if 'hotkeys' not in config_data:

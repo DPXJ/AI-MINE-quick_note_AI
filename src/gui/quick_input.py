@@ -11,6 +11,11 @@ class CustomTextEdit(QTextEdit):
     # 信号
     submit_requested = pyqtSignal()
     cancel_requested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 确保文本框可以接收输入法事件（支持中文输入/IME）
+        self.setAttribute(Qt.WA_InputMethodEnabled, True)
     
     def keyPressEvent(self, event: QKeyEvent):
         """按键事件处理"""
@@ -105,6 +110,100 @@ class GradientBorderButton(QPushButton):
         painter.drawText(rect, Qt.AlignCenter, self.text())
 
 
+class FlowGradientButton(QPushButton):
+    """发送按钮：渐变边框可流动（QTimer 驱动的相位偏移）。"""
+
+    def __init__(self, text: str, bg_color: str, text_color: str, gradient_colors, parent=None):
+        super().__init__(text, parent)
+        self._bg_color = bg_color
+        self._text_color = text_color
+        self._gradient_colors = gradient_colors  # [(r,g,b,a), ...]
+        self._hover = False
+        self._phase = 0.0
+
+        self.setCursor(Qt.PointingHandCursor)
+
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start(30)  # ~33fps，足够顺滑且开销低
+
+    def _tick(self):
+        self._phase = (self._phase + 0.02) % 1.0
+        self.update()
+
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def hideEvent(self, event):
+        # 不显示时停掉动画，省 CPU
+        if self._timer.isActive():
+            self._timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        if not self._timer.isActive():
+            self._timer.start(30)
+        super().showEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect()
+
+        border_width = 3
+        radius = 10
+
+        # hover 时提升亮度
+        if self._hover:
+            colors = [(min(255, c[0] + 25), min(255, c[1] + 25), min(255, c[2] + 25), c[3]) for c in self._gradient_colors]
+        else:
+            colors = self._gradient_colors
+
+        # 渐变“流动”：移动渐变起止点
+        w = max(1, rect.width())
+        shift = (self._phase * 2.0 - 1.0) * w  # [-w, +w]
+        gradient = QLinearGradient(rect.left() + shift, rect.top(), rect.right() + shift, rect.bottom())
+        if len(colors) >= 3:
+            gradient.setColorAt(0.0, QColor(*colors[0]))
+            gradient.setColorAt(0.33, QColor(*colors[1]))
+            gradient.setColorAt(0.66, QColor(*colors[2]))
+            gradient.setColorAt(1.0, QColor(*colors[0]))
+        else:
+            gradient.setColorAt(0.0, QColor(168, 85, 247, 230))
+            gradient.setColorAt(0.5, QColor(34, 197, 94, 230))
+            gradient.setColorAt(1.0, QColor(59, 130, 246, 230))
+
+        # 边框
+        painter.setPen(QPen(gradient, border_width))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(
+            rect.adjusted(border_width // 2, border_width // 2, -border_width // 2, -border_width // 2),
+            radius,
+            radius,
+        )
+
+        # 背景
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(self._bg_color)))
+        painter.drawRoundedRect(
+            rect.adjusted(border_width, border_width, -border_width, -border_width),
+            radius,
+            radius,
+        )
+
+        # 文字
+        painter.setPen(QColor(self._text_color))
+        painter.setFont(self.font())
+        painter.drawText(rect, Qt.AlignCenter, self.text())
+
+
 class PinButton(QPushButton):
     """自定义置顶按钮，支持不同颜色的圆点"""
     
@@ -157,6 +256,172 @@ class PinButton(QPushButton):
         painter.drawText(text_x, text_y, text)
 
 
+class SelectedDotButton(QPushButton):
+    """通用选项按钮：选中时矩形填充 + 右上角绿色圆点。"""
+
+    def __init__(
+        self,
+        text: str,
+        bg: str,
+        bg_checked: str,
+        fg: str,
+        fg_checked: str,
+        border: str,
+        border_checked: str,
+        radius: int = 6,
+        parent=None,
+    ):
+        super().__init__(text, parent)
+        self._bg = bg
+        self._bg_checked = bg_checked
+        self._fg = fg
+        self._fg_checked = fg_checked
+        self._border = border
+        self._border_checked = border_checked
+        self._radius = radius
+        self._hover = False
+
+        self.setCheckable(True)
+        self.setFlat(True)
+        self.setCursor(Qt.PointingHandCursor)
+        # 关键：这里用像素大小与 QLabel 的 `font-size: 13px` 保持一致
+        font = QFont('Microsoft YaHei')
+        font.setPixelSize(13)
+        self.setFont(font)
+
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = self.rect()
+        checked = self.isChecked()
+
+        # 背景
+        bg = self._bg_checked if checked else self._bg
+        if self._hover and not checked:
+            # hover 轻微提亮
+            bg = QColor(bg)
+            bg = QColor(min(bg.red() + 8, 255), min(bg.green() + 8, 255), min(bg.blue() + 8, 255))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(bg)))
+        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), self._radius, self._radius)
+
+        # 边框
+        border_color = self._border_checked if checked else self._border
+        border_w = 2 if checked else 1
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(border_color), border_w))
+        painter.drawRoundedRect(
+            rect.adjusted(border_w // 2, border_w // 2, -border_w // 2, -border_w // 2),
+            self._radius,
+            self._radius,
+        )
+
+        # 文字
+        painter.setPen(QColor(self._fg_checked if checked else self._fg))
+        painter.setFont(self.font())
+        painter.drawText(rect, Qt.AlignCenter, self.text())
+
+        # 选中圆点（右上角绿色）
+        if checked:
+            dot_color = QColor(76, 175, 80)  # #4caf50
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(dot_color))
+            r = 4
+            x = rect.right() - 10
+            y = rect.top() + 10
+            painter.drawEllipse(x - r, y - r, r * 2, r * 2)
+
+
+class PlainLineEditContainer(QWidget):
+    """圆角输入框容器：统一绘制背景/边框，避免 QLineEdit 右侧圆角在某些 DPI/主题下丢失。"""
+
+    def __init__(
+        self,
+        line_edit: QLineEdit,
+        bg_color: str,
+        border_color: str,
+        focus_border_color: str,
+        text_color: str,
+        placeholder_color: str,
+        radius: int = 6,
+        parent=None,
+    ):
+        super().__init__(parent)
+        self._bg_color = bg_color
+        self._border_color = border_color
+        self._focus_border_color = focus_border_color
+        self._text_color = text_color
+        self._placeholder_color = placeholder_color
+        self._radius = radius
+        self._focused = False
+
+        self.line_edit = line_edit
+        self.line_edit.setFrame(False)
+        self.line_edit.setStyleSheet(f"""
+            QLineEdit {{
+                background: transparent;
+                color: {self._text_color};
+                border: none;
+                padding: 0px;
+                font-size: 13px;
+                font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
+            }}
+            QLineEdit::placeholder {{
+                color: {self._placeholder_color};
+                font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
+            }}
+        """)
+        self.line_edit.installEventFilter(self)
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(10, 3, 10, 3)
+        layout.setSpacing(0)
+        layout.addWidget(self.line_edit)
+        self.setLayout(layout)
+
+    def eventFilter(self, obj, event):
+        if obj is self.line_edit:
+            if event.type() == event.FocusIn:
+                self._focused = True
+                self.update()
+            elif event.type() == event.FocusOut:
+                self._focused = False
+                self.update()
+        return super().eventFilter(obj, event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect()
+
+        # 背景
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(self._bg_color)))
+        painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), self._radius, self._radius)
+
+        # 边框（focus 高亮）
+        border = self._focus_border_color if self._focused else self._border_color
+        border_w = 2 if self._focused else 1
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(border), border_w))
+        painter.drawRoundedRect(
+            rect.adjusted(border_w // 2, border_w // 2, -border_w // 2, -border_w // 2),
+            self._radius,
+            self._radius,
+        )
+
+
 class OverlayMaskWidget(QWidget):
     """全屏遮罩窗口（自定义绘制半透明背景）"""
     
@@ -173,17 +438,17 @@ class OverlayMaskWidget(QWidget):
             Qt.X11BypassWindowManagerHint |
             Qt.WindowDoesNotAcceptFocus
         )
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        # 设置鼠标事件穿透，让输入窗口可以接收鼠标事件
-        # 注意：遮罩只用于视觉效果，不拦截鼠标事件
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        # 遮罩需要拦截鼠标：点击遮罩可关闭输入窗口，同时阻止与其他应用交互
+        # 关键点：通过 SetWindowPos 保证输入窗口始终在遮罩之上，因此按钮仍可点击
+        self.setFocusPolicy(Qt.NoFocus)
         
     def mousePressEvent(self, event):
-        """点击遮罩时关闭输入窗口（但鼠标事件已穿透，这个不会被调用）"""
-        # 由于设置了 WA_TransparentForMouseEvents，这个事件不会被触发
-        # 点击遮罩关闭窗口的功能改为在输入窗口失去焦点时实现
+        """点击遮罩时关闭输入窗口"""
         if self.on_click_callback:
             self.on_click_callback()
+        event.accept()
         super().mousePressEvent(event)
         
     def paintEvent(self, event):
@@ -232,8 +497,9 @@ class QuickInputWindow(QWidget):
         self._update_window_flags()
         
         # 窗口大小（固定物理像素，补偿外边距）
-        width = 930  # 固定宽度（增加30以补偿边距）
-        height = 530  # 增加高度以容纳Tab和边距
+        # 略微加大一点点，避免选项区文字拥挤/重叠
+        width = 1000
+        height = 560
         
         self.setFixedSize(width, height)
         
@@ -519,7 +785,8 @@ class QuickInputWindow(QWidget):
         self.notion_options = QWidget()
         notion_options_layout = QHBoxLayout()
         notion_options_layout.setContentsMargins(0, 0, 0, 0)
-        notion_options_layout.setSpacing(10)  # 缩小间距：15 * 0.7 = 10.5，取整为10
+        # 这一行内容较多（状态/优先级/标签），整体间距调小避免挤压
+        notion_options_layout.setSpacing(6)
         
         # 状态选择（改为按钮组）
         status_label = QLabel("状态:")
@@ -529,47 +796,32 @@ class QuickInputWindow(QWidget):
         
         # 状态按钮组
         status_btn_group = QHBoxLayout()
-        status_btn_group.setSpacing(4)  # 缩小间距：6 * 0.7 = 4.2，取整为4
+        status_btn_group.setSpacing(3)
         status_btn_group.setContentsMargins(0, 0, 0, 0)
         self.notion_status_group = QButtonGroup()
         self.notion_status_buttons = {}
         status_options = ["待处理", "进行中", "已完成", "已搁置"]
         
         for i, option in enumerate(status_options):
-            btn = QPushButton(option)
-            btn.setCheckable(True)
-            # 缩小30%：36 * 0.7 = 25.2，取整为25
-            btn.setFixedHeight(25)
-            # 缩小30%：75 * 0.7 = 52.5，取整为53
-            btn.setMinimumWidth(53)
+            btn = SelectedDotButton(
+                option,
+                bg=bg_secondary,
+                bg_checked=bg_input,
+                fg=fg_secondary,
+                fg_checked=fg_color,
+                border=border_color,
+                border_checked=accent_color,
+                radius=6,
+            )
+            btn.setFixedHeight(28)
+            # 更紧凑：固定宽度，避免按钮组占用过多空间导致整行拥挤
+            btn.setFixedWidth(62)
             if i == 0:  # 默认选中"待处理"
                 btn.setChecked(True)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: {bg_secondary};
-                    color: {fg_secondary};
-                    border: 1px solid {border_color};
-                    border-radius: 6px;
-                    padding: 4px 10px;
-                    font-size: 13px;
-                    font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
-                }}
-                QPushButton:hover {{
-                    border: 1px solid rgba(94, 184, 217, 0.5);
-                    background: {bg_input};
-                    color: {fg_color};
-                }}
-                QPushButton:checked {{
-                    background: {bg_input};
-                    color: {accent_color};
-                    border: 1px solid {accent_color};
-                }}
-            """)
             self.notion_status_group.addButton(btn, i)
             self.notion_status_buttons[option] = btn
             status_btn_group.addWidget(btn)
         
-        status_btn_group.addStretch()
         notion_options_layout.addLayout(status_btn_group)
         
         # 优先级选择（改为按钮组）
@@ -580,47 +832,31 @@ class QuickInputWindow(QWidget):
         
         # 优先级按钮组
         priority_btn_group = QHBoxLayout()
-        priority_btn_group.setSpacing(4)  # 缩小间距：6 * 0.7 = 4.2，取整为4
+        priority_btn_group.setSpacing(3)
         priority_btn_group.setContentsMargins(0, 0, 0, 0)
         self.notion_priority_group = QButtonGroup()
         self.notion_priority_buttons = {}
         priority_options = ["高", "中", "低"]
         
         for i, option in enumerate(priority_options):
-            btn = QPushButton(option)
-            btn.setCheckable(True)
-            # 缩小30%：36 * 0.7 = 25.2，取整为25
-            btn.setFixedHeight(25)
-            # 缩小30%：60 * 0.7 = 42，取整为42
-            btn.setMinimumWidth(42)
+            btn = SelectedDotButton(
+                option,
+                bg=bg_secondary,
+                bg_checked=bg_input,
+                fg=fg_secondary,
+                fg_checked=fg_color,
+                border=border_color,
+                border_checked=accent_color,
+                radius=6,
+            )
+            btn.setFixedHeight(28)
+            btn.setFixedWidth(46)
             if i == 1:  # 默认选中"中"
                 btn.setChecked(True)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: {bg_secondary};
-                    color: {fg_secondary};
-                    border: 1px solid {border_color};
-                    border-radius: 6px;
-                    padding: 4px 10px;
-                    font-size: 13px;
-                    font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
-                }}
-                QPushButton:hover {{
-                    border: 1px solid rgba(94, 184, 217, 0.5);
-                    background: {bg_input};
-                    color: {fg_color};
-                }}
-                QPushButton:checked {{
-                    background: {bg_input};
-                    color: {accent_color};
-                    border: 1px solid {accent_color};
-                }}
-            """)
             self.notion_priority_group.addButton(btn, i)
             self.notion_priority_buttons[option] = btn
             priority_btn_group.addWidget(btn)
         
-        priority_btn_group.addStretch()
         notion_options_layout.addLayout(priority_btn_group)
         
         # 标签输入
@@ -628,34 +864,53 @@ class QuickInputWindow(QWidget):
         # 增大字体，使用微软雅黑
         tags_label_notion.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 35px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
         notion_options_layout.addWidget(tags_label_notion)
-        
+
+        # 标签快捷按钮（两种输入方式并行：按钮 + 输入框；支持同时选中）
+        quick_tags_layout = QHBoxLayout()
+        quick_tags_layout.setSpacing(3)
+        quick_tags_layout.setContentsMargins(0, 0, 0, 0)
+        self.notion_tag_quick_buttons = {}
+
+        quick_tag_options = ["闪念", "AI峡谷"]
+        for i, tag_name in enumerate(quick_tag_options):
+            btn = SelectedDotButton(
+                tag_name,
+                bg=bg_secondary,
+                bg_checked=bg_input,
+                fg=fg_secondary,
+                fg_checked=fg_color,
+                border=border_color,
+                border_checked=accent_color,
+                radius=6,
+            )
+            btn.setFixedHeight(28)
+            btn.setFixedWidth(72)
+            btn.setChecked(True)  # 默认两个都选中
+            self.notion_tag_quick_buttons[tag_name] = btn
+            quick_tags_layout.addWidget(btn)
+
+        notion_options_layout.addLayout(quick_tags_layout)
+
+        # 标签输入框（支持空格输入多个标签；边框保持普通深色风格）
         self.notion_tags = QLineEdit()
-        self.notion_tags.setText("灵感")  # 默认标签
-        self.notion_tags.setPlaceholderText("多个标签用空格分隔")
-        # 缩小30%：200 * 0.7 = 140
-        self.notion_tags.setMinimumWidth(140)
-        self.notion_tags.setFixedHeight(25)  # 缩小30%：36 * 0.7 = 25.2，取整为25
-        self.notion_tags.setStyleSheet(f"""
-            QLineEdit {{
-                background: {bg_input};
-                color: {fg_color};
-                border: 1px solid {border_color};
-                border-radius: 6px;
-                padding: 4px 10px;
-                font-size: 13px;
-                font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
-                min-width: 140px;
-            }}
-            QLineEdit:focus {{
-                border: 2px solid {accent_color};
-                background: {bg_secondary};
-            }}
-            QLineEdit::placeholder {{
-                color: {fg_secondary};
-                font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;
-            }}
-        """)
-        notion_options_layout.addWidget(self.notion_tags, stretch=2)  # 增加stretch值，让标签输入框更宽
+        self.notion_tags.setText("")
+        self.notion_tags.setPlaceholderText("可空格输入多个标签")
+        self.notion_tags.setFixedHeight(28)
+        # 标签输入宽度缩短30%
+        self.notion_tags.setMinimumWidth(168)
+        # 使用容器绘制圆角边框，避免右侧圆角在部分环境下丢失
+        self._notion_tags_container = PlainLineEditContainer(
+            self.notion_tags,
+            bg_color=bg_input,
+            border_color=border_color,
+            focus_border_color=accent_color,
+            text_color=fg_color,
+            placeholder_color=fg_secondary,
+            radius=6,
+        )
+        self._notion_tags_container.setFixedHeight(28)
+        self._notion_tags_container.setMinimumWidth(182)
+        notion_options_layout.addWidget(self._notion_tags_container, stretch=2)
         
         notion_options_layout.addStretch()
         self.notion_options.setLayout(notion_options_layout)
@@ -779,88 +1034,27 @@ class QuickInputWindow(QWidget):
         cancel_btn.clicked.connect(self._cancel)
         button_layout.addWidget(cancel_btn)
         
-        # 发送按钮（AI风格渐变边框，深色背景）
-        send_btn = QPushButton("🚀 发送")
+        # 发送按钮（流动渐变边框，酷炫 AI 氛围）
+        send_btn = FlowGradientButton(
+            "🚀 发送",
+            bg_color=bg_input,
+            text_color=fg_color,
+            gradient_colors=[
+                (168, 85, 247, 230),   # 紫
+                (34, 197, 94, 230),    # 绿
+                (59, 130, 246, 230),   # 蓝
+            ],
+        )
         send_btn.setFixedSize(120, 44)
-        # 保存渐变颜色和背景色供自定义绘制使用
-        send_btn._gradient_colors = [
-            (94, 184, 217, 200),   # 主青色（更亮）
-            (74, 158, 196, 220),   # 深青色
-            (94, 184, 217, 200),   # 回到主青色（循环渐变）
-        ]
-        send_btn._bg_color = bg_input
-        send_btn._text_color = accent_color
-        send_btn._hover = False
-        
-        # 设置基础样式（边框会被自定义绘制覆盖）
-        send_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: {bg_input};
-                color: {accent_color};
+        send_btn.setStyleSheet("""
+            QPushButton {
                 border: none;
                 border-radius: 10px;
                 font-size: 15px;
                 font-weight: bold;
-            }}
+                background: transparent;
+            }
         """)
-        
-        # 重写 paintEvent 实现渐变边框
-        original_paint = send_btn.paintEvent
-        def paint_with_gradient_border(event):
-            painter = QPainter(send_btn)
-            painter.setRenderHint(QPainter.Antialiasing)
-            rect = send_btn.rect()
-            border_width = 2
-            
-            # 根据hover状态调整颜色亮度
-            if send_btn._hover:
-                colors = [(min(255, c[0] + 30), min(255, c[1] + 30), min(255, c[2] + 30), c[3]) 
-                         for c in send_btn._gradient_colors]
-            else:
-                colors = send_btn._gradient_colors
-            
-            # 创建线性渐变（从左上到右下）
-            gradient = QLinearGradient(rect.left(), rect.top(), rect.right(), rect.bottom())
-            gradient.setColorAt(0.0, QColor(*colors[0]))
-            gradient.setColorAt(0.5, QColor(*colors[1]))
-            gradient.setColorAt(1.0, QColor(*colors[2]))
-            
-            # 绘制渐变边框
-            painter.setPen(QPen(gradient, border_width))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawRoundedRect(rect.adjusted(border_width//2, border_width//2, 
-                                                 -border_width//2, -border_width//2), 
-                                   10, 10)
-            
-            # 绘制深色背景
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QBrush(QColor(send_btn._bg_color)))
-            painter.drawRoundedRect(rect.adjusted(border_width, border_width, 
-                                                -border_width, -border_width), 
-                                   10, 10)
-            
-            # 绘制文字
-            painter.setPen(QColor(send_btn._text_color))
-            painter.setFont(send_btn.font())
-            painter.drawText(rect, Qt.AlignCenter, send_btn.text())
-        
-        # 重写 enterEvent 和 leaveEvent 以支持 hover 效果
-        original_enter = send_btn.enterEvent
-        original_leave = send_btn.leaveEvent
-        
-        def enter_event(event):
-            send_btn._hover = True
-            send_btn.update()
-            original_enter(event)
-        
-        def leave_event(event):
-            send_btn._hover = False
-            send_btn.update()
-            original_leave(event)
-        
-        send_btn.paintEvent = paint_with_gradient_border
-        send_btn.enterEvent = enter_event
-        send_btn.leaveEvent = leave_event
         send_btn.clicked.connect(self._submit_content)
         
         # 为发送按钮添加柔和发光效果（AI风格）
@@ -951,9 +1145,19 @@ class QuickInputWindow(QWidget):
             self._remove_overlay_mask()
         
         # 从配置读取遮罩颜色和透明度
-        # 默认：黑色，透明度60%（alpha=153）
+        # 默认：黑色，100%不透明（alpha=255）
         mask_color_rgb = self.config.get('mask_color', self.config.get('ui.mask_color', [0, 0, 0]))  # 默认黑色
-        mask_alpha = self.config.get('mask_alpha', self.config.get('ui.mask_alpha', 153))  # 默认60%透明度（255*0.6≈153）
+        mask_alpha = self.config.get('mask_alpha', self.config.get('ui.mask_alpha', 255))
+
+        # 兼容：如果传入的是 0-100（百分比），转换为 0-255（alpha）
+        try:
+            if isinstance(mask_alpha, str):
+                mask_alpha = int(mask_alpha.strip())
+            if isinstance(mask_alpha, (int, float)) and mask_alpha <= 100:
+                mask_alpha = int((max(0, min(100, mask_alpha)) / 100) * 255)
+            mask_alpha = int(max(0, min(255, mask_alpha)))
+        except Exception:
+            mask_alpha = 255
         
         # 确保颜色是元组格式
         if isinstance(mask_color_rgb, list):
@@ -980,7 +1184,6 @@ class QuickInputWindow(QWidget):
             
             # 显示遮罩
             mask.show()
-            mask.raise_()  # 确保遮罩显示在最上层
             
             # 保存引用以便后续关闭
             self._mask_widgets.append(mask)
@@ -992,29 +1195,25 @@ class QuickInputWindow(QWidget):
         def ensure_on_top():
             try:
                 import ctypes
-                # 先确保所有遮罩窗口显示并设置为 TOPMOST
-                for mask in self._mask_widgets:
-                    if mask.isVisible():
-                        mask_hwnd = int(mask.winId())
-                        # 遮罩窗口设置为 HWND_TOPMOST
-                        ctypes.windll.user32.SetWindowPos(
-                            mask_hwnd,
-                            -2,  # HWND_TOPMOST
-                            0, 0, 0, 0,
-                            0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
-                        )
-                        # 强制刷新遮罩窗口
-                        ctypes.windll.user32.ShowWindow(mask_hwnd, 1)  # SW_SHOWNORMAL
-                
-                # 然后确保输入窗口在最上层（在所有遮罩之上）
                 hwnd = int(self.winId())
-                # 使用 HWND_TOPMOST 确保输入窗口在遮罩之上，并且可以接收鼠标事件
+                # 先确保输入窗口为 TOPMOST（并保持激活能力）
                 ctypes.windll.user32.SetWindowPos(
                     hwnd,
-                    -2,  # HWND_TOPMOST - 置顶（在所有遮罩之上）
+                    -2,  # HWND_TOPMOST
                     0, 0, 0, 0,
                     0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
                 )
+
+                # 再把所有遮罩窗口放到“输入窗口之下”（同为TOPMOST，但Z序更低）
+                for mask in self._mask_widgets:
+                    if mask.isVisible():
+                        mask_hwnd = int(mask.winId())
+                        ctypes.windll.user32.SetWindowPos(
+                            mask_hwnd,
+                            hwnd,  # 插入到输入窗口之后 => 在输入窗口下方
+                            0, 0, 0, 0,
+                            0x0001 | 0x0002 | 0x0010  # SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                        )
             except Exception as e:
                 logger.warning(f"设置窗口层级失败: {e}")
             
@@ -1082,10 +1281,10 @@ class QuickInputWindow(QWidget):
                 import ctypes
                 hwnd = int(self.winId())
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
-                # 确保窗口在顶层
+                # 确保窗口在顶层（置顶模式下必须是 TOPMOST，否则可能被遮罩盖住导致不可点击/IME异常）
                 ctypes.windll.user32.SetWindowPos(
                     hwnd, 
-                    -1,  # HWND_TOP
+                    -2 if self._is_always_on_top else -1,  # HWND_TOPMOST / HWND_TOP
                     0, 0, 0, 0,
                     0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
                 )
@@ -1183,9 +1382,29 @@ class QuickInputWindow(QWidget):
                 else:
                     extra_params["priority"] = "中"  # 默认值
                 
+                # 标签：按钮选择（支持多选）+ 输入框（空格分隔）合并保存
+                combined_tags = []
+                try:
+                    for btn in getattr(self, "notion_tag_quick_buttons", {}).values():
+                        if btn and btn.isChecked():
+                            combined_tags.append(btn.text())
+                except Exception:
+                    pass
+
                 tags_text = self.notion_tags.text().strip()
                 if tags_text:
-                    extra_params["tags"] = [tag.strip() for tag in tags_text.split() if tag.strip()]
+                    combined_tags.extend([tag.strip() for tag in tags_text.split() if tag.strip()])
+
+                # 去重/规范化（移除多余#）
+                normalized = []
+                seen = set()
+                for t in combined_tags:
+                    nt = (t or "").strip().lstrip("#")
+                    if nt and nt not in seen:
+                        normalized.append(nt)
+                        seen.add(nt)
+                if normalized:
+                    extra_params["tags"] = normalized
                 
             elif self.target_platform == "flomo":
                 # Flomo: 标签
@@ -1205,7 +1424,12 @@ class QuickInputWindow(QWidget):
             if self.target_platform == "flomo":
                 self.flomo_tags.setText("闪念 QuickNote AI")  # 重置为默认值
             elif self.target_platform == "notion":
-                self.notion_tags.setText("灵感")  # 重置为默认标签
+                # 重置标签：输入框清空 + 默认选中“闪念”
+                self.notion_tags.setText("")
+                if hasattr(self, "notion_tag_quick_buttons"):
+                    for btn in self.notion_tag_quick_buttons.values():
+                        if btn:
+                            btn.setChecked(True)
                 # 重置状态和优先级按钮为默认值
                 if "待处理" in self.notion_status_buttons:
                     self.notion_status_buttons["待处理"].setChecked(True)

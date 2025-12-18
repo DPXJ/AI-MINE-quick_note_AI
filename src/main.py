@@ -77,7 +77,14 @@ class QuickNoteApp(QObject):
         try:
             # GUI组件
             ui_config = config.get("ui.quick_input", {})
-            self.quick_input_window = QuickInputWindow(ui_config)
+            # 遮罩配置：默认黑色 + 100%不透明（alpha=255），且启动即生效
+            mask_color = config.get('ui.mask_color', [0, 0, 0])
+            mask_alpha = config.get('ui.mask_alpha', 255)
+            self.quick_input_window = QuickInputWindow({
+                **ui_config,
+                'mask_color': mask_color,
+                'mask_alpha': mask_alpha,
+            })
             self.tray_icon = TrayIcon(self.app)
             self.settings_dialog = None
             
@@ -243,7 +250,7 @@ class QuickNoteApp(QObject):
                 new_ui_config = new_config.get("ui.quick_input", {})
                 # 更新遮罩配置（从ui节点读取）
                 mask_color = new_config.get('ui.mask_color', [0, 0, 0])
-                mask_alpha = new_config.get('ui.mask_alpha', 153)
+                mask_alpha = new_config.get('ui.mask_alpha', 255)
                 # 更新遮罩配置
                 self.quick_input_window.config = {
                     **new_ui_config,
