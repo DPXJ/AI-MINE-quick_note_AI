@@ -477,8 +477,8 @@ class QuickNoteApp(QObject):
                 if category and category not in tags:
                     tags.insert(0, category)
                 
-                # 强制添加标签：AI同步
-                forced_tag = "AI同步"
+                # 强制添加标签：Quick_Note_AI同步
+                forced_tag = "Quick_Note_AI同步"
                 if forced_tag not in tags:
                     tags.append(forced_tag)
                 
