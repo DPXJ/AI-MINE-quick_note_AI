@@ -4,6 +4,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint, QTime
 from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent, QCursor, QPainter, QBrush, QPen, QLinearGradient
 from loguru import logger
 import datetime
+from src.services.quote_service import QuoteService
 
 
 class CustomTextEdit(QTextEdit):
@@ -481,6 +482,10 @@ class QuickInputWindow(QWidget):
         self._is_always_on_top = True  # 默认置顶
         # 确保窗口可以接收输入法事件（支持中文输入）
         self.setAttribute(Qt.WA_InputMethodEnabled, True)
+        
+        # 初始化金句服务
+        self.quote_service = QuoteService()
+        
         self._init_ui()
         logger.info("快速输入窗口已初始化")
     
@@ -989,19 +994,16 @@ class QuickInputWindow(QWidget):
         self.ticktick_options = QWidget()
         self.ticktick_options.setVisible(False)
         
-        # 冥想选填项: 倒计时和正向计时
+        # 冥想选填项: 倒计时和正向计时（同一行）
         self.meditation_options = QWidget()
-        meditation_options_layout = QVBoxLayout()
+        meditation_options_layout = QHBoxLayout()
         meditation_options_layout.setContentsMargins(0, 0, 0, 0)
         meditation_options_layout.setSpacing(12)
         
         # 倒计时选项区域
         countdown_label = QLabel("倒计时:")
-        countdown_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
-        countdown_layout = QHBoxLayout()
-        countdown_layout.setSpacing(8)
-        countdown_layout.setContentsMargins(0, 0, 0, 0)
-        countdown_layout.addWidget(countdown_label)
+        countdown_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 60px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
+        meditation_options_layout.addWidget(countdown_label)
         
         # 倒计时按钮组
         self.meditation_countdown_group = QButtonGroup()
@@ -1030,20 +1032,15 @@ class QuickInputWindow(QWidget):
             self.meditation_countdown_buttons[text] = btn
             btn.minutes = minutes  # 存储分钟数
             btn.clicked.connect(lambda checked, b=btn: self._on_countdown_selected(b) if checked else None)
-            countdown_layout.addWidget(btn)
+            meditation_options_layout.addWidget(btn)
         
-        countdown_layout.addStretch()
-        countdown_widget = QWidget()
-        countdown_widget.setLayout(countdown_layout)
-        meditation_options_layout.addWidget(countdown_widget)
+        # 添加间距
+        meditation_options_layout.addSpacing(20)
         
         # 正向计时选项区域
         timer_label = QLabel("正向计时:")
-        timer_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
-        timer_layout = QHBoxLayout()
-        timer_layout.setSpacing(8)
-        timer_layout.setContentsMargins(0, 0, 0, 0)
-        timer_layout.addWidget(timer_label)
+        timer_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 70px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
+        meditation_options_layout.addWidget(timer_label)
         
         # 正向计时开始按钮
         self.meditation_timer_start_btn = SelectedDotButton(
@@ -1060,12 +1057,7 @@ class QuickInputWindow(QWidget):
         self.meditation_timer_start_btn.setFixedWidth(80)
         self.meditation_timer_start_btn.setCheckable(True)
         self.meditation_timer_start_btn.clicked.connect(self._on_timer_start)
-        timer_layout.addWidget(self.meditation_timer_start_btn)
-        
-        timer_layout.addStretch()
-        timer_widget = QWidget()
-        timer_widget.setLayout(timer_layout)
-        meditation_options_layout.addWidget(timer_widget)
+        meditation_options_layout.addWidget(self.meditation_timer_start_btn)
         
         meditation_options_layout.addStretch()
         self.meditation_options.setLayout(meditation_options_layout)
@@ -1112,6 +1104,158 @@ class QuickInputWindow(QWidget):
         self.text_edit.setGraphicsEffect(text_shadow)
         
         content_layout.addWidget(self.text_edit, stretch=1)
+        
+        # ========== 冥想金句展示区域（默认隐藏）==========
+        self.meditation_quote_widget = QWidget()
+        self.meditation_quote_widget.setVisible(False)
+        meditation_quote_layout = QVBoxLayout()
+        meditation_quote_layout.setContentsMargins(0, 20, 0, 20)
+        meditation_quote_layout.setSpacing(20)
+        
+        # 金句标题
+        quote_title = QLabel("💡 每日智慧")
+        quote_title.setStyleSheet(f"""
+            QLabel {{
+                color: {accent_color};
+                font-size: 18px;
+                font-weight: bold;
+                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            }}
+        """)
+        quote_title.setAlignment(Qt.AlignCenter)
+        meditation_quote_layout.addWidget(quote_title)
+        
+        # 金句内容（大号文字）
+        self.meditation_quote_label = QLabel("正在加载金句...")
+        self.meditation_quote_label.setStyleSheet(f"""
+            QLabel {{
+                color: {fg_color};
+                font-size: 24px;
+                font-weight: 500;
+                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+                line-height: 1.8;
+                background: {bg_input};
+                border: 2px solid {accent_color};
+                border-radius: 16px;
+                padding: 40px 30px;
+            }}
+        """)
+        self.meditation_quote_label.setAlignment(Qt.AlignCenter)
+        self.meditation_quote_label.setWordWrap(True)
+        meditation_quote_layout.addWidget(self.meditation_quote_label, stretch=1)
+        
+        # 金句出处（小号文字）
+        self.meditation_quote_author = QLabel("—— 佚名")
+        self.meditation_quote_author.setStyleSheet(f"""
+            QLabel {{
+                color: {fg_secondary};
+                font-size: 15px;
+                font-style: italic;
+                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+                padding: 0px 10px;
+            }}
+        """)
+        self.meditation_quote_author.setAlignment(Qt.AlignCenter)
+        meditation_quote_layout.addWidget(self.meditation_quote_author)
+        
+        # 操作按钮行
+        quote_btn_layout = QHBoxLayout()
+        quote_btn_layout.setSpacing(12)
+        quote_btn_layout.addStretch()
+        
+        # 上一条按钮
+        self.quote_prev_btn = QPushButton("← 上一条")
+        self.quote_prev_btn.setFixedHeight(38)
+        self.quote_prev_btn.setFixedWidth(100)
+        self.quote_prev_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {bg_input};
+                color: {accent_color};
+                border: 2px solid {accent_color};
+            }}
+        """)
+        self.quote_prev_btn.clicked.connect(self._on_quote_previous)
+        quote_btn_layout.addWidget(self.quote_prev_btn)
+        
+        # 随机按钮
+        self.quote_random_btn = QPushButton("🎲 随机")
+        self.quote_random_btn.setFixedHeight(38)
+        self.quote_random_btn.setFixedWidth(100)
+        self.quote_random_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_secondary};
+                color: {fg_color};
+                border: 1px solid {accent_color};
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {accent_color};
+                color: white;
+                border: 2px solid {accent_color};
+            }}
+        """)
+        self.quote_random_btn.clicked.connect(self._on_quote_random)
+        quote_btn_layout.addWidget(self.quote_random_btn)
+        
+        # 下一条按钮
+        self.quote_next_btn = QPushButton("下一条 →")
+        self.quote_next_btn.setFixedHeight(38)
+        self.quote_next_btn.setFixedWidth(100)
+        self.quote_next_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {bg_input};
+                color: {accent_color};
+                border: 2px solid {accent_color};
+            }}
+        """)
+        self.quote_next_btn.clicked.connect(self._on_quote_next)
+        quote_btn_layout.addWidget(self.quote_next_btn)
+        
+        # 复制按钮
+        self.quote_copy_btn = QPushButton("📋 复制")
+        self.quote_copy_btn.setFixedHeight(38)
+        self.quote_copy_btn.setFixedWidth(100)
+        self.quote_copy_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
+                border-radius: 10px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {bg_input};
+                color: {accent_color};
+                border: 2px solid {accent_color};
+            }}
+        """)
+        self.quote_copy_btn.clicked.connect(self._on_quote_copy)
+        quote_btn_layout.addWidget(self.quote_copy_btn)
+        
+        quote_btn_layout.addStretch()
+        meditation_quote_layout.addLayout(quote_btn_layout)
+        
+        self.meditation_quote_widget.setLayout(meditation_quote_layout)
+        content_layout.addWidget(self.meditation_quote_widget, stretch=1)
         
         # ========== 冥想计时器显示区域（默认隐藏）==========
         self.meditation_timer_widget = QWidget()
@@ -1577,8 +1721,9 @@ class QuickInputWindow(QWidget):
             self.ticktick_options.setVisible(False)
             self.meditation_options.setVisible(False)
             self.options_container.setVisible(True)  # 显示选项容器
-            # 隐藏冥想计时器，显示输入框
+            # 隐藏冥想相关widget，显示输入框
             self.meditation_timer_widget.setVisible(False)
+            self.meditation_quote_widget.setVisible(False)
             self.text_edit.setVisible(True)
             self.text_edit.setPlaceholderText("输入你的灵感...")
             logger.info("切换到Notion模式")
@@ -1592,8 +1737,9 @@ class QuickInputWindow(QWidget):
             self.ticktick_options.setVisible(False)
             self.meditation_options.setVisible(False)
             self.options_container.setVisible(True)  # 显示选项容器
-            # 隐藏冥想计时器，显示输入框
+            # 隐藏冥想相关widget，显示输入框
             self.meditation_timer_widget.setVisible(False)
+            self.meditation_quote_widget.setVisible(False)
             self.text_edit.setVisible(True)
             # 如果标签为空，设置为默认值
             if not self.flomo_tags.text().strip():
@@ -1610,8 +1756,9 @@ class QuickInputWindow(QWidget):
             self.ticktick_options.setVisible(False)  # TickTick无选填项，隐藏
             self.meditation_options.setVisible(False)
             self.options_container.setVisible(False)  # 隐藏整个选项容器，减少间隔
-            # 隐藏冥想计时器，显示输入框
+            # 隐藏冥想相关widget，显示输入框
             self.meditation_timer_widget.setVisible(False)
+            self.meditation_quote_widget.setVisible(False)
             self.text_edit.setVisible(True)
             self.text_edit.setPlaceholderText("输入待办任务...")
             logger.info("切换到滴答清单模式")
@@ -1625,20 +1772,23 @@ class QuickInputWindow(QWidget):
             self.ticktick_options.setVisible(False)
             self.meditation_options.setVisible(True)
             
-            # 如果计时器正在运行或已暂停，显示计时器；否则显示选项和输入框
+            # 如果计时器正在运行或已暂停，显示计时器；否则显示金句和选项
             if self.meditation_is_running or self.meditation_current_seconds > 0:
                 # 正在计时或已暂停，显示计时器
                 self.options_container.setVisible(False)
                 self.text_edit.setVisible(False)
+                self.meditation_quote_widget.setVisible(False)
                 self.meditation_timer_widget.setVisible(True)
                 logger.info("切换到冥想模式（计时器运行中）")
             else:
-                # 未开始计时，显示选项
+                # 未开始计时，显示金句和选项
                 self.options_container.setVisible(True)
-                self.text_edit.setVisible(True)
-                self.text_edit.setPlaceholderText("选择倒计时或正向计时开始冥想...")
+                self.text_edit.setVisible(False)  # 不显示输入框
+                self.meditation_quote_widget.setVisible(True)  # 显示金句
                 self.meditation_timer_widget.setVisible(False)
-                logger.info("切换到冥想模式（选择计时选项）")
+                # 加载金句
+                self._load_quote()
+                logger.info("切换到冥想模式（金句展示）")
     
     def _submit_content(self):
         """提交内容"""
@@ -1866,3 +2016,84 @@ class QuickInputWindow(QWidget):
         """失去焦点时不自动隐藏（用户可能需要切换窗口）"""
         # 不再自动隐藏，让用户主动关闭
         super().focusOutEvent(event)
+    
+    # ========== 金句相关方法 ==========
+    
+    def _load_quote(self, quote_data=None):
+        """加载并显示金句"""
+        try:
+            if quote_data is None:
+                quote_data = self.quote_service.get_current_quote()
+                if not quote_data:
+                    quote_data = self.quote_service.get_random_quote()
+            
+            if quote_data:
+                self.meditation_quote_label.setText(quote_data["quote"])
+                author_text = f"—— {quote_data['author']}"
+                if "category" in quote_data and quote_data["category"]:
+                    author_text += f"  ·  {quote_data['category']}"
+                self.meditation_quote_author.setText(author_text)
+                logger.info(f"加载金句: {quote_data['quote'][:30]}...")
+        except Exception as e:
+            logger.error(f"加载金句失败: {e}", exc_info=True)
+            self.meditation_quote_label.setText("加载金句失败，请点击随机按钮重试")
+            self.meditation_quote_author.setText("—— 系统")
+    
+    def _on_quote_previous(self):
+        """显示上一条金句"""
+        try:
+            quote_data = self.quote_service.get_previous_quote()
+            if quote_data:
+                self._load_quote(quote_data)
+                logger.info("切换到上一条金句")
+        except Exception as e:
+            logger.error(f"获取上一条金句失败: {e}", exc_info=True)
+    
+    def _on_quote_next(self):
+        """显示下一条金句"""
+        try:
+            quote_data = self.quote_service.get_next_quote()
+            if quote_data:
+                self._load_quote(quote_data)
+                logger.info("切换到下一条金句")
+        except Exception as e:
+            logger.error(f"获取下一条金句失败: {e}", exc_info=True)
+    
+    def _on_quote_random(self):
+        """获取随机金句"""
+        try:
+            # 显示加载提示
+            self.meditation_quote_label.setText("正在生成金句...")
+            self.meditation_quote_author.setText("—— AI思考中")
+            
+            # 强制刷新UI
+            QApplication.processEvents()
+            
+            # 获取新金句
+            quote_data = self.quote_service.get_random_quote()
+            if quote_data:
+                self._load_quote(quote_data)
+                logger.info("生成随机金句成功")
+        except Exception as e:
+            logger.error(f"获取随机金句失败: {e}", exc_info=True)
+            self.meditation_quote_label.setText("获取金句失败，请稍后重试")
+            self.meditation_quote_author.setText("—— 系统")
+    
+    def _on_quote_copy(self):
+        """复制金句到剪贴板"""
+        try:
+            quote_text = self.quote_service.get_quote_text()
+            if quote_text:
+                clipboard = QApplication.clipboard()
+                clipboard.setText(quote_text)
+                
+                # 临时显示复制成功提示
+                original_text = self.quote_copy_btn.text()
+                self.quote_copy_btn.setText("✓ 已复制")
+                
+                # 2秒后恢复原文本
+                QTimer.singleShot(2000, lambda: self.quote_copy_btn.setText(original_text))
+                
+                logger.info(f"已复制金句到剪贴板: {quote_text[:30]}...")
+        except Exception as e:
+            logger.error(f"复制金句失败: {e}", exc_info=True)

@@ -98,6 +98,34 @@ ai_rules:
       请根据内容自动识别，如果符合以上特征且包含时间信息，优先同步到TickTick作为待办任务。'
     enabled: true
   clipboard_monitor: true
+  
+# AI金句配置
+meditation_quotes:
+  enabled: true
+  api:
+    base_url: https://api.siliconflow.cn/v1
+    model: Qwen/Qwen2.5-7B-Instruct
+    # API Key 从环境变量读取: SILICON_API_KEY
+  prompt: |
+    你是一位智慧的导师，请生成一条能够启发思考、提升认知的金句。
+
+    要求：
+    1. 金句要有深度，能引发深层思考
+    2. 涵盖领域：哲学、心理学、历史、商业、科技、人生智慧等
+    3. 可以是名人名言，也可以是原创思考
+    4. 必须包含明确的出处或归属（如果是名人名言，注明人名；如果是原创，可以注明"佚名"或相关领域）
+    5. 金句要简洁有力，一般不超过100字
+    6. 避免鸡汤式的空洞表达，要有逻辑深度
+
+    请以JSON格式返回：
+    {
+      "quote": "金句内容",
+      "author": "作者或出处",
+      "category": "分类（如：哲学、商业、心理学等）"
+    }
+
+    只返回JSON，不要其他内容。
+
 ui:
   quick_input:
     width: 800

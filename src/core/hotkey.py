@@ -145,10 +145,10 @@ class HotkeyListener:
                         logger.warning(f"检测到监听器可能失效（{int(time_since_hotkey)}秒无快捷键触发），强制重启...")
                         listener_dead = True
                 
-                # 检查3：心跳检测 - 放宽条件，只有超过2分钟没有按键活动才认为失效
+                # 检查3：心跳检测 - 适度放宽条件，60秒没有按键活动认为可能失效
                 if not listener_dead and self.last_activity_time:
                     time_since_activity = current_time - self.last_activity_time
-                    if time_since_activity > 120:  # 2分钟无活动（放宽条件）
+                    if time_since_activity > 60:  # 60秒无活动（适度放宽）
                         logger.warning(f"检测到监听器可能失效（{int(time_since_activity)}秒无按键活动），强制重启...")
                         listener_dead = True
                 
