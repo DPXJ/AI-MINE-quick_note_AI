@@ -1,8 +1,9 @@
 """快速输入窗口"""
-from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QButtonGroup, QApplication
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint
+from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QButtonGroup, QApplication, QDialog, QInputDialog
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint, QTime
 from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent, QCursor, QPainter, QBrush, QPen, QLinearGradient
 from loguru import logger
+import datetime
 
 
 class CustomTextEdit(QTextEdit):
@@ -499,8 +500,9 @@ class QuickInputWindow(QWidget):
         
         # 窗口大小（固定物理像素，补偿外边距）
         # 略微加大一点点，避免选项区文字拥挤/重叠
+        # 冥想模式需要更高的窗口来显示计时器
         width = 1000
-        height = 560
+        height = 620  # 增加高度以容纳冥想计时器
         
         self.setFixedSize(width, height)
         
@@ -772,6 +774,38 @@ class QuickInputWindow(QWidget):
         self.ticktick_tab_btn.clicked.connect(lambda: self._switch_platform("ticktick"))
         tab_layout.addWidget(self.ticktick_tab_btn)
         
+        self.meditation_tab_btn = QPushButton("🧘 冥想")
+        self.meditation_tab_btn.setCheckable(True)
+        self.meditation_tab_btn.setChecked(False)
+        self.meditation_tab_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
+                border-radius: 10px;
+                padding: 10px 24px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {bg_input};
+                border: 1px solid rgba(94, 184, 217, 0.4);
+                color: {fg_color};
+            }}
+            QPushButton:checked {{
+                background: {bg_input};
+                color: {accent_color};
+                border: 1px solid {accent_color};
+            }}
+            QPushButton:!checked {{
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
+            }}
+        """)
+        self.meditation_tab_btn.clicked.connect(lambda: self._switch_platform("meditation"))
+        tab_layout.addWidget(self.meditation_tab_btn)
+        
         tab_layout.addStretch()
         content_layout.addLayout(tab_layout)
         
@@ -955,10 +989,93 @@ class QuickInputWindow(QWidget):
         self.ticktick_options = QWidget()
         self.ticktick_options.setVisible(False)
         
+        # 冥想选填项: 倒计时和正向计时
+        self.meditation_options = QWidget()
+        meditation_options_layout = QVBoxLayout()
+        meditation_options_layout.setContentsMargins(0, 0, 0, 0)
+        meditation_options_layout.setSpacing(12)
+        
+        # 倒计时选项区域
+        countdown_label = QLabel("倒计时:")
+        countdown_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
+        countdown_layout = QHBoxLayout()
+        countdown_layout.setSpacing(8)
+        countdown_layout.setContentsMargins(0, 0, 0, 0)
+        countdown_layout.addWidget(countdown_label)
+        
+        # 倒计时按钮组
+        self.meditation_countdown_group = QButtonGroup()
+        self.meditation_countdown_buttons = {}
+        countdown_options = [
+            ("45分钟", 45),
+            ("15分钟", 15),
+            ("10分钟", 10),
+            ("自定义", None)  # None表示自定义
+        ]
+        
+        for i, (text, minutes) in enumerate(countdown_options):
+            btn = SelectedDotButton(
+                text,
+                bg=bg_secondary,
+                bg_checked=bg_input,
+                fg=fg_secondary,
+                fg_checked=fg_color,
+                border=border_color,
+                border_checked=accent_color,
+                radius=6,
+            )
+            btn.setFixedHeight(28)
+            btn.setFixedWidth(70 if text != "自定义" else 80)
+            self.meditation_countdown_group.addButton(btn, i)
+            self.meditation_countdown_buttons[text] = btn
+            btn.minutes = minutes  # 存储分钟数
+            btn.clicked.connect(lambda checked, b=btn: self._on_countdown_selected(b) if checked else None)
+            countdown_layout.addWidget(btn)
+        
+        countdown_layout.addStretch()
+        countdown_widget = QWidget()
+        countdown_widget.setLayout(countdown_layout)
+        meditation_options_layout.addWidget(countdown_widget)
+        
+        # 正向计时选项区域
+        timer_label = QLabel("正向计时:")
+        timer_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
+        timer_layout = QHBoxLayout()
+        timer_layout.setSpacing(8)
+        timer_layout.setContentsMargins(0, 0, 0, 0)
+        timer_layout.addWidget(timer_label)
+        
+        # 正向计时开始按钮
+        self.meditation_timer_start_btn = SelectedDotButton(
+            "开始",
+            bg=bg_secondary,
+            bg_checked=bg_input,
+            fg=fg_secondary,
+            fg_checked=accent_color,
+            border=border_color,
+            border_checked=accent_color,
+            radius=6,
+        )
+        self.meditation_timer_start_btn.setFixedHeight(28)
+        self.meditation_timer_start_btn.setFixedWidth(80)
+        self.meditation_timer_start_btn.setCheckable(True)
+        self.meditation_timer_start_btn.clicked.connect(self._on_timer_start)
+        timer_layout.addWidget(self.meditation_timer_start_btn)
+        
+        timer_layout.addStretch()
+        timer_widget = QWidget()
+        timer_widget.setLayout(timer_layout)
+        meditation_options_layout.addWidget(timer_widget)
+        
+        meditation_options_layout.addStretch()
+        self.meditation_options.setLayout(meditation_options_layout)
+        self.meditation_options.setVisible(False)
+        
         # 添加到选项容器
         self.options_layout.addWidget(self.notion_options)
         self.options_layout.addWidget(self.flomo_options)
         self.options_layout.addWidget(self.ticktick_options)
+        self.options_layout.addWidget(self.meditation_options)
         self.options_container.setLayout(self.options_layout)
         content_layout.addWidget(self.options_container)
         
@@ -995,6 +1112,107 @@ class QuickInputWindow(QWidget):
         self.text_edit.setGraphicsEffect(text_shadow)
         
         content_layout.addWidget(self.text_edit, stretch=1)
+        
+        # ========== 冥想计时器显示区域（默认隐藏）==========
+        self.meditation_timer_widget = QWidget()
+        self.meditation_timer_widget.setVisible(False)
+        meditation_timer_layout = QVBoxLayout()
+        meditation_timer_layout.setContentsMargins(0, 20, 0, 20)
+        meditation_timer_layout.setSpacing(20)
+        
+        # 计时器标题
+        self.meditation_title = QLabel("🧘 倒计时")
+        self.meditation_title.setStyleSheet(f"""
+            QLabel {{
+                color: {accent_color};
+                font-size: 22px;
+                font-weight: bold;
+                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            }}
+        """)
+        self.meditation_title.setAlignment(Qt.AlignCenter)
+        meditation_timer_layout.addWidget(self.meditation_title)
+        
+        # 时间显示（超大号粗体）
+        self.meditation_time_label = QLabel("00:00:00")
+        self.meditation_time_label.setStyleSheet(f"""
+            QLabel {{
+                color: {fg_color};
+                font-size: 90px;
+                font-weight: bold;
+                font-family: 'Courier New', monospace;
+                letter-spacing: 8px;
+                background: {bg_input};
+                border: 2px solid {accent_color};
+                border-radius: 20px;
+                padding: 30px;
+            }}
+        """)
+        self.meditation_time_label.setAlignment(Qt.AlignCenter)
+        meditation_timer_layout.addWidget(self.meditation_time_label, stretch=1)
+        
+        # 控制按钮
+        meditation_btn_layout = QHBoxLayout()
+        meditation_btn_layout.setSpacing(15)
+        meditation_btn_layout.addStretch()
+        
+        # 暂停/继续按钮
+        self.meditation_pause_btn = QPushButton("⏸ 暂停")
+        self.meditation_pause_btn.setFixedSize(140, 50)
+        self.meditation_pause_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {accent_color};
+                color: white;
+                border: none;
+                border-radius: 12px;
+                font-size: 16px;
+                font-weight: bold;
+                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            }}
+            QPushButton:hover {{
+                background: {accent_secondary};
+            }}
+            QPushButton:pressed {{
+                background: {accent_glow};
+            }}
+        """)
+        self.meditation_pause_btn.clicked.connect(self._toggle_meditation_pause)
+        meditation_btn_layout.addWidget(self.meditation_pause_btn)
+        
+        # 停止按钮
+        self.meditation_stop_btn = QPushButton("⏹ 停止")
+        self.meditation_stop_btn.setFixedSize(140, 50)
+        self.meditation_stop_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_input};
+                color: {fg_color};
+                border: 1px solid {border_color};
+                border-radius: 12px;
+                font-size: 16px;
+                font-weight: bold;
+                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            }}
+            QPushButton:hover {{
+                background: {bg_secondary};
+                border: 1px solid {accent_color};
+            }}
+        """)
+        self.meditation_stop_btn.clicked.connect(self._stop_meditation)
+        meditation_btn_layout.addWidget(self.meditation_stop_btn)
+        
+        meditation_btn_layout.addStretch()
+        meditation_timer_layout.addLayout(meditation_btn_layout)
+        
+        self.meditation_timer_widget.setLayout(meditation_timer_layout)
+        content_layout.addWidget(self.meditation_timer_widget, stretch=1)
+        
+        # 冥想计时器状态
+        self.meditation_timer = QTimer(self)
+        self.meditation_timer.timeout.connect(self._update_meditation_time)
+        self.meditation_is_countdown = True
+        self.meditation_total_seconds = 0
+        self.meditation_current_seconds = 0
+        self.meditation_is_running = False
         
         # 底部按钮区域
         button_layout = QHBoxLayout()
@@ -1221,13 +1439,8 @@ class QuickInputWindow(QWidget):
             self.raise_()
             self.activateWindow()
         
-        # 多次延迟确保窗口层级正确
-        QTimer.singleShot(10, ensure_on_top)
-        QTimer.singleShot(50, ensure_on_top)
-        QTimer.singleShot(100, ensure_on_top)
-        QTimer.singleShot(200, ensure_on_top)
-        QTimer.singleShot(500, ensure_on_top)  # 增加一次延迟
-        
+        # 遮罩创建完成，窗口层级将在show_at_center中统一设置
+        # 减少延迟调用，避免IME问题
         logger.info(f"遮罩已创建，数量: {len(self._mask_widgets)}, 屏幕数: {len(screens)}")
     
     def _remove_overlay_mask(self):
@@ -1235,11 +1448,18 @@ class QuickInputWindow(QWidget):
         if self._mask_widgets:
             for mask in self._mask_widgets:
                 try:
+                    if mask.isVisible():
+                        mask.hide()
                     mask.close()
                     mask.deleteLater()
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"移除遮罩时出错: {e}")
             self._mask_widgets.clear()
+            # 强制清理，避免内存泄漏
+            try:
+                QApplication.processEvents()
+            except:
+                pass
     
     def _get_screen_at_cursor(self):
         """获取鼠标所在屏幕"""
@@ -1256,7 +1476,11 @@ class QuickInputWindow(QWidget):
     
     def show_at_center(self):
         """显示在鼠标所在屏幕的中央"""
-        # 只有置顶时才创建遮罩
+        # 先移除旧的遮罩（如果存在），避免累积
+        if self._mask_widgets:
+            self._remove_overlay_mask()
+        
+        # 只有置顶时才创建遮罩（在显示窗口之前创建）
         if self._is_always_on_top:
             self._create_overlay_mask()
         
@@ -1272,40 +1496,58 @@ class QuickInputWindow(QWidget):
         
         # 确保窗口显示并获取焦点
         self.show()
+        self.raise_()
+        self.activateWindow()
         
-        # 强制确保输入窗口在遮罩上方（多次尝试）
-        def ensure_on_top():
-            self.raise_()
-            self.activateWindow()
-            # 在 Windows 上强制激活窗口
+        # 优化：减少延迟调用次数，避免IME丢失焦点
+        def ensure_on_top_and_focus():
             try:
                 import ctypes
                 hwnd = int(self.winId())
+                
+                # 只在置顶模式下使用TOPMOST，避免影响IME
+                if self._is_always_on_top:
+                    # 设置输入窗口为TOPMOST
+                    ctypes.windll.user32.SetWindowPos(
+                        hwnd,
+                        -2,  # HWND_TOPMOST
+                        0, 0, 0, 0,
+                        0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
+                    )
+                    
+                    # 确保遮罩在输入窗口下方
+                    for mask in self._mask_widgets:
+                        if mask.isVisible():
+                            try:
+                                mask_hwnd = int(mask.winId())
+                                ctypes.windll.user32.SetWindowPos(
+                                    mask_hwnd,
+                                    hwnd,  # 插入到输入窗口之后
+                                    0, 0, 0, 0,
+                                    0x0001 | 0x0002 | 0x0010  # SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                                )
+                            except:
+                                pass
+                
+                # 激活窗口（只调用一次，避免IME问题）
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
-                # 确保窗口在顶层（置顶模式下必须是 TOPMOST，否则可能被遮罩盖住导致不可点击/IME异常）
-                ctypes.windll.user32.SetWindowPos(
-                    hwnd, 
-                    -2 if self._is_always_on_top else -1,  # HWND_TOPMOST / HWND_TOP
-                    0, 0, 0, 0,
-                    0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
-                )
-            except:
-                pass
+                
+                # 聚焦到输入框（使用Qt的方式，更温和）
+                QTimer.singleShot(100, lambda: self.text_edit.setFocus())
+            except Exception as e:
+                logger.warning(f"设置窗口层级失败: {e}")
+                # 降级方案：使用Qt方式聚焦
+                QTimer.singleShot(100, lambda: self.text_edit.setFocus())
         
-        # 延迟确保窗口在顶层（多次尝试确保成功）
-        QTimer.singleShot(10, ensure_on_top)
-        QTimer.singleShot(50, ensure_on_top)
-        QTimer.singleShot(100, ensure_on_top)
-        QTimer.singleShot(200, ensure_on_top)
-        
-        # 延迟聚焦到输入框，确保窗口已完全激活
-        QTimer.singleShot(250, lambda: self.text_edit.setFocus())
+        # 只调用一次延迟，减少对IME的影响
+        QTimer.singleShot(50, ensure_on_top_and_focus)
         
         logger.info(f"快速输入窗口已显示在屏幕: {screen.name()}, 遮罩数量: {len(self._mask_widgets)}")
     
     def hide(self):
         """隐藏窗口并移除遮罩"""
         self._remove_overlay_mask()
+        # 注意：不停止冥想计时器，让它在后台继续运行
         super().hide()
     
     def closeEvent(self, event):
@@ -1329,35 +1571,74 @@ class QuickInputWindow(QWidget):
             self.notion_tab_btn.setChecked(True)
             self.flomo_tab_btn.setChecked(False)
             self.ticktick_tab_btn.setChecked(False)
+            self.meditation_tab_btn.setChecked(False)
             self.notion_options.setVisible(True)
             self.flomo_options.setVisible(False)
             self.ticktick_options.setVisible(False)
+            self.meditation_options.setVisible(False)
             self.options_container.setVisible(True)  # 显示选项容器
+            # 隐藏冥想计时器，显示输入框
+            self.meditation_timer_widget.setVisible(False)
+            self.text_edit.setVisible(True)
             self.text_edit.setPlaceholderText("输入你的灵感...")
             logger.info("切换到Notion模式")
         elif platform == "flomo":
             self.notion_tab_btn.setChecked(False)
             self.flomo_tab_btn.setChecked(True)
             self.ticktick_tab_btn.setChecked(False)
+            self.meditation_tab_btn.setChecked(False)
             self.notion_options.setVisible(False)
             self.flomo_options.setVisible(True)
             self.ticktick_options.setVisible(False)
+            self.meditation_options.setVisible(False)
             self.options_container.setVisible(True)  # 显示选项容器
+            # 隐藏冥想计时器，显示输入框
+            self.meditation_timer_widget.setVisible(False)
+            self.text_edit.setVisible(True)
             # 如果标签为空，设置为默认值
             if not self.flomo_tags.text().strip():
                 self.flomo_tags.setText("闪念 QuickNote AI")
             self.text_edit.setPlaceholderText("输入金句、知识或方法论...")
             logger.info("切换到Flomo模式")
-        else:  # ticktick
+        elif platform == "ticktick":
             self.notion_tab_btn.setChecked(False)
             self.flomo_tab_btn.setChecked(False)
             self.ticktick_tab_btn.setChecked(True)
+            self.meditation_tab_btn.setChecked(False)
             self.notion_options.setVisible(False)
             self.flomo_options.setVisible(False)
             self.ticktick_options.setVisible(False)  # TickTick无选填项，隐藏
+            self.meditation_options.setVisible(False)
             self.options_container.setVisible(False)  # 隐藏整个选项容器，减少间隔
+            # 隐藏冥想计时器，显示输入框
+            self.meditation_timer_widget.setVisible(False)
+            self.text_edit.setVisible(True)
             self.text_edit.setPlaceholderText("输入待办任务...")
             logger.info("切换到滴答清单模式")
+        elif platform == "meditation":
+            self.notion_tab_btn.setChecked(False)
+            self.flomo_tab_btn.setChecked(False)
+            self.ticktick_tab_btn.setChecked(False)
+            self.meditation_tab_btn.setChecked(True)
+            self.notion_options.setVisible(False)
+            self.flomo_options.setVisible(False)
+            self.ticktick_options.setVisible(False)
+            self.meditation_options.setVisible(True)
+            
+            # 如果计时器正在运行或已暂停，显示计时器；否则显示选项和输入框
+            if self.meditation_is_running or self.meditation_current_seconds > 0:
+                # 正在计时或已暂停，显示计时器
+                self.options_container.setVisible(False)
+                self.text_edit.setVisible(False)
+                self.meditation_timer_widget.setVisible(True)
+                logger.info("切换到冥想模式（计时器运行中）")
+            else:
+                # 未开始计时，显示选项
+                self.options_container.setVisible(True)
+                self.text_edit.setVisible(True)
+                self.text_edit.setPlaceholderText("选择倒计时或正向计时开始冥想...")
+                self.meditation_timer_widget.setVisible(False)
+                logger.info("切换到冥想模式（选择计时选项）")
     
     def _submit_content(self):
         """提交内容"""
@@ -1449,6 +1730,137 @@ class QuickInputWindow(QWidget):
         self.text_edit.clear()
         self.hide()
         logger.info("用户取消输入")
+    
+    def _on_countdown_selected(self, button):
+        """倒计时选择处理"""
+        if button.text() == "自定义":
+            # 弹出输入框让用户输入分钟数
+            minutes, ok = QInputDialog.getInt(
+                self,
+                "自定义倒计时",
+                "请输入倒计时分钟数:",
+                value=15,
+                min=1,
+                max=999
+            )
+            if not ok:
+                button.setChecked(False)
+                return
+            total_seconds = minutes * 60
+        else:
+            # 使用预设的分钟数
+            total_seconds = button.minutes * 60
+        
+        # 取消其他按钮的选中状态
+        for btn in self.meditation_countdown_buttons.values():
+            if btn != button:
+                btn.setChecked(False)
+        
+        # 开始倒计时（在当前窗口显示）
+        self._start_meditation_timer(is_countdown=True, total_seconds=total_seconds)
+        
+        logger.info(f"开始倒计时: {total_seconds}秒")
+    
+    def _on_timer_start(self):
+        """正向计时开始处理"""
+        if self.meditation_timer_start_btn.isChecked():
+            # 开始正向计时（在当前窗口显示）
+            self._start_meditation_timer(is_countdown=False, total_seconds=0)
+            
+            logger.info("开始正向计时")
+            
+            # 重置按钮状态
+            self.meditation_timer_start_btn.setChecked(False)
+    
+    def _start_meditation_timer(self, is_countdown=True, total_seconds=0):
+        """开始冥想计时器"""
+        self.meditation_is_countdown = is_countdown
+        self.meditation_total_seconds = total_seconds
+        self.meditation_current_seconds = total_seconds if is_countdown else 0
+        self.meditation_is_running = True
+        
+        # 更新UI
+        title_text = "倒计时" if is_countdown else "正向计时"
+        self.meditation_title.setText(f"🧘 {title_text}")
+        self.meditation_time_label.setText(self._format_meditation_time(self.meditation_current_seconds))
+        self.meditation_pause_btn.setText("⏸ 暂停")
+        
+        # 只在冥想标签页时显示计时器
+        if self.target_platform == "meditation":
+            # 隐藏输入框和选项，显示计时器
+            self.text_edit.setVisible(False)
+            self.options_container.setVisible(False)
+            self.meditation_timer_widget.setVisible(True)
+        
+        # 开始计时（独立运行，不受标签切换影响）
+        self.meditation_timer.start(1000)  # 每秒更新一次
+        
+        logger.info(f"冥想计时器已启动: {'倒计时' if is_countdown else '正向计时'}, 初始值: {total_seconds}秒")
+    
+    def _update_meditation_time(self):
+        """更新冥想计时器时间（独立运行，不受标签切换影响）"""
+        if not self.meditation_is_running:
+            return
+        
+        if self.meditation_is_countdown:
+            self.meditation_current_seconds -= 1
+            if self.meditation_current_seconds <= 0:
+                self.meditation_current_seconds = 0
+                self.meditation_timer.stop()
+                self.meditation_is_running = False
+                self.meditation_pause_btn.setText("▶ 继续")
+                logger.info("倒计时结束")
+                # 可以播放提示音或显示提示
+        else:
+            self.meditation_current_seconds += 1
+        
+        # 更新时间显示（始终更新，即使不在冥想标签页）
+        self.meditation_time_label.setText(self._format_meditation_time(self.meditation_current_seconds))
+    
+    def _format_meditation_time(self, seconds):
+        """格式化冥想时间显示"""
+        if self.meditation_is_countdown:
+            if seconds <= 0:
+                return "00:00:00"
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    
+    def _toggle_meditation_pause(self):
+        """切换冥想计时器的暂停/继续"""
+        if self.meditation_is_running:
+            self.meditation_timer.stop()
+            self.meditation_is_running = False
+            self.meditation_pause_btn.setText("▶ 继续")
+            logger.info("冥想计时器已暂停")
+        else:
+            # 检查倒计时是否已结束
+            if self.meditation_is_countdown and self.meditation_current_seconds <= 0:
+                logger.info("倒计时已结束，无法继续")
+                return
+            self.meditation_timer.start(1000)
+            self.meditation_is_running = True
+            self.meditation_pause_btn.setText("⏸ 暂停")
+            logger.info("冥想计时器已继续")
+    
+    def _stop_meditation(self):
+        """停止冥想计时器（手动结束）"""
+        self.meditation_timer.stop()
+        self.meditation_is_running = False
+        self.meditation_current_seconds = 0
+        
+        # 重置所有倒计时按钮的选中状态
+        for btn in self.meditation_countdown_buttons.values():
+            btn.setChecked(False)
+        
+        # 只在冥想标签页时恢复UI
+        if self.target_platform == "meditation":
+            self.meditation_timer_widget.setVisible(False)
+            self.text_edit.setVisible(True)
+            self.options_container.setVisible(True)
+        
+        logger.info("冥想计时器已停止")
     
     def focusOutEvent(self, event):
         """失去焦点时不自动隐藏（用户可能需要切换窗口）"""

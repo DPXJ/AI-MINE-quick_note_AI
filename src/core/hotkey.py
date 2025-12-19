@@ -117,7 +117,7 @@ class HotkeyListener:
         
         while not self.stop_watchdog and self.is_running:
             try:
-                time.sleep(3)  # 每3秒检查一次（更频繁的检查）
+                time.sleep(10)  # 每10秒检查一次（降低检查频率，减少CPU占用和误判）
                 current_time = time.time()
                 self.last_check_time = current_time
                 
@@ -131,24 +131,24 @@ class HotkeyListener:
                     logger.warning("监听器对象丢失，正在重新创建...")
                     listener_dead = True
                 
-                # 检查2：快捷键触发检测（关键！）
-                # 情况A：如果从未触发过快捷键，且启动超过1分钟，强制重启（缩短检测时间）
+                # 检查2：快捷键触发检测（放宽条件，避免误判）
+                # 情况A：如果从未触发过快捷键，且启动超过5分钟，才认为可能失效
                 if not listener_dead and self.last_hotkey_trigger_time is None and self.start_time:
                     time_since_start = current_time - self.start_time
-                    if time_since_start > 60:  # 1分钟从未触发过快捷键（从2分钟缩短）
+                    if time_since_start > 300:  # 5分钟从未触发过快捷键（放宽条件）
                         logger.warning(f"检测到监听器可能失效（启动{int(time_since_start)}秒从未触发快捷键），强制重启...")
                         listener_dead = True
-                # 情况B：如果之前触发过，但超过2分钟没有触发，认为失效（缩短检测时间）
+                # 情况B：如果之前触发过，但超过10分钟没有触发，认为失效（放宽条件）
                 elif not listener_dead and self.last_hotkey_trigger_time is not None:
                     time_since_hotkey = current_time - self.last_hotkey_trigger_time
-                    if time_since_hotkey > 120:  # 2分钟无快捷键触发（从3分钟缩短）
+                    if time_since_hotkey > 600:  # 10分钟无快捷键触发（放宽条件）
                         logger.warning(f"检测到监听器可能失效（{int(time_since_hotkey)}秒无快捷键触发），强制重启...")
                         listener_dead = True
                 
-                # 检查3：心跳检测 - 如果超过30秒没有按键活动，也认为监听器失效（更严格的检测）
+                # 检查3：心跳检测 - 放宽条件，只有超过2分钟没有按键活动才认为失效
                 if not listener_dead and self.last_activity_time:
                     time_since_activity = current_time - self.last_activity_time
-                    if time_since_activity > 30:  # 30秒无活动（缩短到30秒）
+                    if time_since_activity > 120:  # 2分钟无活动（放宽条件）
                         logger.warning(f"检测到监听器可能失效（{int(time_since_activity)}秒无按键活动），强制重启...")
                         listener_dead = True
                 
