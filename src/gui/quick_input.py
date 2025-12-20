@@ -1,6 +1,6 @@
 """快速输入窗口"""
 from PyQt5.QtWidgets import QWidget, QTextEdit, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QGraphicsDropShadowEffect, QButtonGroup, QApplication, QDialog, QInputDialog
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint, QTime
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QPoint, QTime, QThread, pyqtSlot
 from PyQt5.QtGui import QFont, QColor, QPalette, QKeyEvent, QMouseEvent, QCursor, QPainter, QBrush, QPen, QLinearGradient
 from loguru import logger
 import datetime
@@ -1059,6 +1059,30 @@ class QuickInputWindow(QWidget):
         self.meditation_timer_start_btn.clicked.connect(self._on_timer_start)
         meditation_options_layout.addWidget(self.meditation_timer_start_btn)
         
+        # 添加间距
+        meditation_options_layout.addSpacing(20)
+        
+        # 查看金句按钮
+        quote_view_label = QLabel("金句:")
+        quote_view_label.setStyleSheet(f"font-size: 13px; color: {fg_secondary}; min-width: 45px; font-family: 'Microsoft YaHei', '微软雅黑', sans-serif;")
+        meditation_options_layout.addWidget(quote_view_label)
+        
+        self.meditation_quote_view_btn = SelectedDotButton(
+            "💡 查看",
+            bg=bg_secondary,
+            bg_checked=bg_input,
+            fg=fg_secondary,
+            fg_checked=accent_color,
+            border=border_color,
+            border_checked=accent_color,
+            radius=6,
+        )
+        self.meditation_quote_view_btn.setFixedHeight(28)
+        self.meditation_quote_view_btn.setFixedWidth(80)
+        self.meditation_quote_view_btn.setCheckable(True)  # 设置为可选中
+        self.meditation_quote_view_btn.clicked.connect(self._on_view_quote)
+        meditation_options_layout.addWidget(self.meditation_quote_view_btn)
+        
         meditation_options_layout.addStretch()
         self.meditation_options.setLayout(meditation_options_layout)
         self.meditation_options.setVisible(False)
@@ -1109,71 +1133,63 @@ class QuickInputWindow(QWidget):
         self.meditation_quote_widget = QWidget()
         self.meditation_quote_widget.setVisible(False)
         meditation_quote_layout = QVBoxLayout()
-        meditation_quote_layout.setContentsMargins(0, 20, 0, 20)
-        meditation_quote_layout.setSpacing(20)
+        meditation_quote_layout.setContentsMargins(0, 0, 0, 5)  # 上边距设为0，大幅向上移
+        meditation_quote_layout.setSpacing(5)  # 最小化间距
         
-        # 金句标题
+        # 金句标题（更小）
         quote_title = QLabel("💡 每日智慧")
         quote_title.setStyleSheet(f"""
             QLabel {{
                 color: {accent_color};
-                font-size: 18px;
+                font-size: 13px;
                 font-weight: bold;
                 font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+                padding: 0px;
+                margin: 0px;
             }}
         """)
         quote_title.setAlignment(Qt.AlignCenter)
         meditation_quote_layout.addWidget(quote_title)
         
-        # 金句内容（大号文字）
+        # 金句显示（使用HTML格式，一个Label中显示金句和出处）
         self.meditation_quote_label = QLabel("正在加载金句...")
         self.meditation_quote_label.setStyleSheet(f"""
             QLabel {{
                 color: {fg_color};
-                font-size: 24px;
-                font-weight: 500;
-                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
-                line-height: 1.8;
                 background: {bg_input};
                 border: 2px solid {accent_color};
-                border-radius: 16px;
-                padding: 40px 30px;
+                border-radius: 14px;
+                padding: 30px 25px;
+                min-height: 160px;
+                max-height: 280px;
             }}
         """)
         self.meditation_quote_label.setAlignment(Qt.AlignCenter)
         self.meditation_quote_label.setWordWrap(True)
-        meditation_quote_layout.addWidget(self.meditation_quote_label, stretch=1)
+        self.meditation_quote_label.setTextFormat(Qt.RichText)
+        meditation_quote_layout.addWidget(self.meditation_quote_label, stretch=3)
         
-        # 金句出处（小号文字）
-        self.meditation_quote_author = QLabel("—— 佚名")
-        self.meditation_quote_author.setStyleSheet(f"""
-            QLabel {{
-                color: {fg_secondary};
-                font-size: 15px;
-                font-style: italic;
-                font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
-                padding: 0px 10px;
-            }}
-        """)
-        self.meditation_quote_author.setAlignment(Qt.AlignCenter)
-        meditation_quote_layout.addWidget(self.meditation_quote_author)
+        # 保留author label用于代码兼容，但实际不显示
+        self.meditation_quote_author = QLabel("")
+        self.meditation_quote_author.setVisible(False)
         
         # 操作按钮行
         quote_btn_layout = QHBoxLayout()
-        quote_btn_layout.setSpacing(12)
+        quote_btn_layout.setSpacing(10)  # 减小按钮间距
+        quote_btn_layout.setContentsMargins(0, 3, 0, 0)  # 减小上边距
         quote_btn_layout.addStretch()
         
         # 上一条按钮
         self.quote_prev_btn = QPushButton("← 上一条")
-        self.quote_prev_btn.setFixedHeight(38)
-        self.quote_prev_btn.setFixedWidth(100)
+        self.quote_prev_btn.setFixedHeight(32)  # 缩小按钮高度
+        self.quote_prev_btn.setFixedWidth(90)  # 缩小按钮宽度
         self.quote_prev_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
                 color: {fg_secondary};
                 border: 1px solid {border_color};
-                border-radius: 10px;
-                font-size: 14px;
+                border-radius: 8px;
+                font-size: 12px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -1187,15 +1203,15 @@ class QuickInputWindow(QWidget):
         
         # 随机按钮
         self.quote_random_btn = QPushButton("🎲 随机")
-        self.quote_random_btn.setFixedHeight(38)
-        self.quote_random_btn.setFixedWidth(100)
+        self.quote_random_btn.setFixedHeight(32)
+        self.quote_random_btn.setFixedWidth(90)
         self.quote_random_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
                 color: {fg_color};
                 border: 1px solid {accent_color};
-                border-radius: 10px;
-                font-size: 14px;
+                border-radius: 8px;
+                font-size: 12px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -1209,15 +1225,15 @@ class QuickInputWindow(QWidget):
         
         # 下一条按钮
         self.quote_next_btn = QPushButton("下一条 →")
-        self.quote_next_btn.setFixedHeight(38)
-        self.quote_next_btn.setFixedWidth(100)
+        self.quote_next_btn.setFixedHeight(32)
+        self.quote_next_btn.setFixedWidth(90)
         self.quote_next_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
                 color: {fg_secondary};
                 border: 1px solid {border_color};
-                border-radius: 10px;
-                font-size: 14px;
+                border-radius: 8px;
+                font-size: 12px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -1231,15 +1247,15 @@ class QuickInputWindow(QWidget):
         
         # 复制按钮
         self.quote_copy_btn = QPushButton("📋 复制")
-        self.quote_copy_btn.setFixedHeight(38)
-        self.quote_copy_btn.setFixedWidth(100)
+        self.quote_copy_btn.setFixedHeight(32)
+        self.quote_copy_btn.setFixedWidth(90)
         self.quote_copy_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
                 color: {fg_secondary};
                 border: 1px solid {border_color};
-                border-radius: 10px;
-                font-size: 14px;
+                border-radius: 8px;
+                font-size: 12px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -1250,6 +1266,28 @@ class QuickInputWindow(QWidget):
         """)
         self.quote_copy_btn.clicked.connect(self._on_quote_copy)
         quote_btn_layout.addWidget(self.quote_copy_btn)
+        
+        # 同步flomo按钮
+        self.quote_sync_flomo_btn = QPushButton("🏷️ 同步flomo")
+        self.quote_sync_flomo_btn.setFixedHeight(32)
+        self.quote_sync_flomo_btn.setFixedWidth(110)
+        self.quote_sync_flomo_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_secondary};
+                color: {fg_secondary};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: {bg_input};
+                color: {accent_color};
+                border: 2px solid {accent_color};
+            }}
+        """)
+        self.quote_sync_flomo_btn.clicked.connect(self._on_quote_sync_flomo)
+        quote_btn_layout.addWidget(self.quote_sync_flomo_btn)
         
         quote_btn_layout.addStretch()
         meditation_quote_layout.addLayout(quote_btn_layout)
@@ -1786,9 +1824,14 @@ class QuickInputWindow(QWidget):
                 self.text_edit.setVisible(False)  # 不显示输入框
                 self.meditation_quote_widget.setVisible(True)  # 显示金句
                 self.meditation_timer_widget.setVisible(False)
-                # 加载金句
-                self._load_quote()
-                logger.info("切换到冥想模式（金句展示）")
+                # 只显示默认文字，不自动调用API
+                self._show_default_quote()
+                # 重置所有按钮状态
+                for btn in self.meditation_countdown_buttons.values():
+                    btn.setChecked(False)
+                self.meditation_timer_start_btn.setChecked(False)
+                self.meditation_quote_view_btn.setChecked(False)
+                logger.info("切换到冥想模式（默认状态）")
     
     def _submit_content(self):
         """提交内容"""
@@ -1901,10 +1944,12 @@ class QuickInputWindow(QWidget):
             # 使用预设的分钟数
             total_seconds = button.minutes * 60
         
-        # 取消其他按钮的选中状态
+        # 取消其他按钮的选中状态（包括"查看"按钮）
         for btn in self.meditation_countdown_buttons.values():
             if btn != button:
                 btn.setChecked(False)
+        self.meditation_timer_start_btn.setChecked(False)
+        self.meditation_quote_view_btn.setChecked(False)
         
         # 开始倒计时（在当前窗口显示）
         self._start_meditation_timer(is_countdown=True, total_seconds=total_seconds)
@@ -1914,6 +1959,11 @@ class QuickInputWindow(QWidget):
     def _on_timer_start(self):
         """正向计时开始处理"""
         if self.meditation_timer_start_btn.isChecked():
+            # 取消其他按钮的选中状态
+            for btn in self.meditation_countdown_buttons.values():
+                btn.setChecked(False)
+            self.meditation_quote_view_btn.setChecked(False)
+            
             # 开始正向计时（在当前窗口显示）
             self._start_meditation_timer(is_countdown=False, total_seconds=0)
             
@@ -1921,6 +1971,83 @@ class QuickInputWindow(QWidget):
             
             # 重置按钮状态
             self.meditation_timer_start_btn.setChecked(False)
+    
+    def _on_view_quote(self):
+        """查看金句"""
+        try:
+            # 只有当按钮被选中时才执行
+            if not self.meditation_quote_view_btn.isChecked():
+                return
+            
+            # 取消其他按钮的选中状态
+            for btn in self.meditation_countdown_buttons.values():
+                btn.setChecked(False)
+            self.meditation_timer_start_btn.setChecked(False)
+            
+            # 显示金句区域，隐藏计时器
+            if self.target_platform == "meditation":
+                self.options_container.setVisible(True)
+                self.text_edit.setVisible(False)
+                self.meditation_quote_widget.setVisible(True)
+                self.meditation_timer_widget.setVisible(False)
+                
+                # 显示"正在加载..."
+                html_text = '''
+                    <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                        正在加载金句...
+                    </div>
+                    <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                        —— AI思考中
+                    </div>
+                '''
+                self.meditation_quote_label.setText(html_text)
+                
+                # 异步加载金句
+                from PyQt5.QtCore import QThread
+                
+                class ViewQuoteLoaderThread(QThread):
+                    def __init__(self, quote_service, parent=None):
+                        super().__init__(parent)
+                        self.quote_service = quote_service
+                        self.result = None
+                    
+                    def run(self):
+                        try:
+                            # 优先使用当前金句
+                            self.result = self.quote_service.get_current_quote()
+                            if not self.result:
+                                # 如果没有，则获取随机金句
+                                self.result = self.quote_service.get_random_quote()
+                        except Exception as e:
+                            logger.error(f"查看金句失败: {e}", exc_info=True)
+                            self.result = None
+                
+                # 创建线程
+                self._view_quote_loader_thread = ViewQuoteLoaderThread(self.quote_service, self)
+                self._view_quote_loader_thread.finished.connect(
+                    lambda: self._on_view_quote_loaded(self._view_quote_loader_thread.result)
+                )
+                self._view_quote_loader_thread.start()
+                
+                logger.info("点击查看金句，开始加载")
+        except Exception as e:
+            logger.error(f"查看金句失败: {e}", exc_info=True)
+    
+    def _on_view_quote_loaded(self, quote_data):
+        """查看金句加载完成的回调"""
+        if quote_data:
+            self._load_quote(quote_data)
+            logger.info("查看金句加载完成")
+        else:
+            html_text = '''
+                <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                    加载金句失败，请稍后重试
+                </div>
+                <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                    —— 系统
+                </div>
+            '''
+            self.meditation_quote_label.setText(html_text)
     
     def _start_meditation_timer(self, is_countdown=True, total_seconds=0):
         """开始冥想计时器"""
@@ -1937,9 +2064,10 @@ class QuickInputWindow(QWidget):
         
         # 只在冥想标签页时显示计时器
         if self.target_platform == "meditation":
-            # 隐藏输入框和选项，显示计时器
+            # 隐藏输入框、选项和金句，显示计时器
             self.text_edit.setVisible(False)
             self.options_container.setVisible(False)
+            self.meditation_quote_widget.setVisible(False)  # 修复：隐藏金句widget
             self.meditation_timer_widget.setVisible(True)
         
         # 开始计时（独立运行，不受标签切换影响）
@@ -2019,8 +2147,27 @@ class QuickInputWindow(QWidget):
     
     # ========== 金句相关方法 ==========
     
+    def _show_default_quote(self):
+        """显示默认金句文字（不调用API）"""
+        try:
+            # 显示默认文字（使用HTML格式，金句和出处分开样式）
+            default_quote = "厉行价值创造，守正向上，一起感受文字力量......"
+            default_author = "—— QuickNote AI"
+            html_text = f'''
+                <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                    {default_quote}
+                </div>
+                <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                    {default_author}
+                </div>
+            '''
+            self.meditation_quote_label.setText(html_text)
+            logger.info("显示默认金句文字")
+        except Exception as e:
+            logger.error(f"显示默认金句失败: {e}", exc_info=True)
+    
     def _load_quote(self, quote_data=None):
-        """加载并显示金句"""
+        """加载并显示金句（使用HTML格式）"""
         try:
             if quote_data is None:
                 quote_data = self.quote_service.get_current_quote()
@@ -2028,16 +2175,34 @@ class QuickInputWindow(QWidget):
                     quote_data = self.quote_service.get_random_quote()
             
             if quote_data:
-                self.meditation_quote_label.setText(quote_data["quote"])
+                # 金句和出处使用HTML格式显示
+                quote_text = quote_data["quote"]
                 author_text = f"—— {quote_data['author']}"
                 if "category" in quote_data and quote_data["category"]:
                     author_text += f"  ·  {quote_data['category']}"
-                self.meditation_quote_author.setText(author_text)
+                
+                # 使用HTML格式，金句居中大字号，出处右下角小字号灰色
+                html_text = f'''
+                    <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                        {quote_text}
+                    </div>
+                    <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                        {author_text}
+                    </div>
+                '''
+                self.meditation_quote_label.setText(html_text)
                 logger.info(f"加载金句: {quote_data['quote'][:30]}...")
         except Exception as e:
             logger.error(f"加载金句失败: {e}", exc_info=True)
-            self.meditation_quote_label.setText("加载金句失败，请点击随机按钮重试")
-            self.meditation_quote_author.setText("—— 系统")
+            html_text = '''
+                <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                    加载金句失败，请点击随机按钮重试
+                </div>
+                <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                    —— 系统
+                </div>
+            '''
+            self.meditation_quote_label.setText(html_text)
     
     def _on_quote_previous(self):
         """显示上一条金句"""
@@ -2050,34 +2215,120 @@ class QuickInputWindow(QWidget):
             logger.error(f"获取上一条金句失败: {e}", exc_info=True)
     
     def _on_quote_next(self):
-        """显示下一条金句"""
+        """显示下一条金句（异步加载，提升响应速度）"""
         try:
-            quote_data = self.quote_service.get_next_quote()
-            if quote_data:
-                self._load_quote(quote_data)
-                logger.info("切换到下一条金句")
+            # 禁用按钮，防止重复点击
+            self.quote_next_btn.setEnabled(False)
+            self.quote_next_btn.setText("加载中...")
+            
+            # 使用线程安全的信号机制
+            from PyQt5.QtCore import QThread
+            
+            class QuoteLoaderThread(QThread):
+                def __init__(self, quote_service, parent=None):
+                    super().__init__(parent)
+                    self.quote_service = quote_service
+                    self.result = None
+                
+                def run(self):
+                    try:
+                        self.result = self.quote_service.get_next_quote()
+                    except Exception as e:
+                        logger.error(f"获取下一条金句失败: {e}", exc_info=True)
+                        self.result = None
+            
+            # 创建线程
+            self._quote_loader_thread = QuoteLoaderThread(self.quote_service, self)
+            self._quote_loader_thread.finished.connect(
+                lambda: self._on_next_quote_loaded(self._quote_loader_thread.result)
+            )
+            self._quote_loader_thread.start()
+            
         except Exception as e:
             logger.error(f"获取下一条金句失败: {e}", exc_info=True)
+            self.quote_next_btn.setEnabled(True)
+            self.quote_next_btn.setText("下一条 →")
+    
+    def _on_next_quote_loaded(self, quote_data):
+        """下一条金句加载完成的回调"""
+        self.quote_next_btn.setEnabled(True)
+        self.quote_next_btn.setText("下一条 →")
+        if quote_data:
+            self._load_quote(quote_data)
+            logger.info("切换到下一条金句")
     
     def _on_quote_random(self):
-        """获取随机金句"""
+        """获取随机金句（异步加载，提升响应速度）"""
         try:
             # 显示加载提示
-            self.meditation_quote_label.setText("正在生成金句...")
-            self.meditation_quote_author.setText("—— AI思考中")
+            html_text = '''
+                <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                    正在生成金句...
+                </div>
+                <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                    —— AI思考中
+                </div>
+            '''
+            self.meditation_quote_label.setText(html_text)
             
-            # 强制刷新UI
-            QApplication.processEvents()
+            # 禁用按钮，防止重复点击
+            self.quote_random_btn.setEnabled(False)
+            self.quote_random_btn.setText("生成中...")
             
-            # 获取新金句
-            quote_data = self.quote_service.get_random_quote()
-            if quote_data:
-                self._load_quote(quote_data)
-                logger.info("生成随机金句成功")
+            # 使用线程安全的信号机制
+            from PyQt5.QtCore import QThread
+            
+            class RandomQuoteLoaderThread(QThread):
+                def __init__(self, quote_service, parent=None):
+                    super().__init__(parent)
+                    self.quote_service = quote_service
+                    self.result = None
+                
+                def run(self):
+                    try:
+                        self.result = self.quote_service.get_random_quote()
+                    except Exception as e:
+                        logger.error(f"获取随机金句失败: {e}", exc_info=True)
+                        self.result = None
+            
+            # 创建线程
+            self._random_quote_loader_thread = RandomQuoteLoaderThread(self.quote_service, self)
+            self._random_quote_loader_thread.finished.connect(
+                lambda: self._on_random_quote_loaded(self._random_quote_loader_thread.result)
+            )
+            self._random_quote_loader_thread.start()
+            
         except Exception as e:
             logger.error(f"获取随机金句失败: {e}", exc_info=True)
-            self.meditation_quote_label.setText("获取金句失败，请稍后重试")
-            self.meditation_quote_author.setText("—— 系统")
+            html_text = '''
+                <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                    获取金句失败，请稍后重试
+                </div>
+                <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                    —— 系统
+                </div>
+            '''
+            self.meditation_quote_label.setText(html_text)
+            self.quote_random_btn.setEnabled(True)
+            self.quote_random_btn.setText("🎲 随机")
+    
+    def _on_random_quote_loaded(self, quote_data):
+        """随机金句加载完成的回调"""
+        self.quote_random_btn.setEnabled(True)
+        self.quote_random_btn.setText("🎲 随机")
+        if quote_data:
+            self._load_quote(quote_data)
+            logger.info("生成随机金句成功")
+        else:
+            html_text = '''
+                <div style="text-align: center; line-height: 2.2; font-size: 20px; color: #e8e8e8; font-weight: 500;">
+                    获取金句失败，请稍后重试
+                </div>
+                <div style="text-align: right; margin-top: 30px; font-size: 13px; color: #888888; padding-right: 12px;">
+                    —— 系统
+                </div>
+            '''
+            self.meditation_quote_label.setText(html_text)
     
     def _on_quote_copy(self):
         """复制金句到剪贴板"""
@@ -2097,3 +2348,44 @@ class QuickInputWindow(QWidget):
                 logger.info(f"已复制金句到剪贴板: {quote_text[:30]}...")
         except Exception as e:
             logger.error(f"复制金句失败: {e}", exc_info=True)
+    
+    def _on_quote_sync_flomo(self):
+        """同步金句到flomo"""
+        try:
+            current_quote = self.quote_service.get_current_quote()
+            if not current_quote:
+                logger.warning("没有可同步的金句")
+                return
+            
+            # 格式化金句内容
+            quote_content = f"{current_quote['quote']}\n\n—— {current_quote['author']}"
+            if current_quote.get('category'):
+                quote_content += f" · {current_quote['category']}"
+            
+            # 构建flomo标签（包含分类和固定标签）
+            tags = "Quick_Note_AI 智慧金句"
+            if current_quote.get('category'):
+                tags += f" {current_quote['category']}"
+            
+            # 发送到flomo（使用现有的content_submitted信号）
+            extra_params = {
+                "tags": tags
+            }
+            
+            # 发出提交信号
+            self.content_submitted.emit("flomo", quote_content, extra_params)
+            
+            # 临时显示同步成功提示
+            original_text = self.quote_sync_flomo_btn.text()
+            self.quote_sync_flomo_btn.setText("✓ 已同步")
+            
+            # 2秒后恢复原文本
+            QTimer.singleShot(2000, lambda: self.quote_sync_flomo_btn.setText(original_text))
+            
+            logger.info(f"已同步金句到flomo: {current_quote['quote'][:30]}... (标签: {tags})")
+        except Exception as e:
+            logger.error(f"同步金句到flomo失败: {e}", exc_info=True)
+            # 显示错误提示
+            original_text = self.quote_sync_flomo_btn.text()
+            self.quote_sync_flomo_btn.setText("✗ 同步失败")
+            QTimer.singleShot(2000, lambda: self.quote_sync_flomo_btn.setText(original_text))
