@@ -1012,6 +1012,7 @@ class QuickInputWindow(QWidget):
             ("45分钟", 45),
             ("15分钟", 15),
             ("10分钟", 10),
+            ("5分钟", 5),
             ("自定义", None)  # None表示自定义
         ]
         
@@ -1027,7 +1028,13 @@ class QuickInputWindow(QWidget):
                 radius=6,
             )
             btn.setFixedHeight(28)
-            btn.setFixedWidth(70 if text != "自定义" else 80)
+            # 根据按钮文字调整宽度：5分钟稍窄一些，自定义稍宽一些
+            if text == "5分钟":
+                btn.setFixedWidth(65)
+            elif text == "自定义":
+                btn.setFixedWidth(75)
+            else:
+                btn.setFixedWidth(70)
             self.meditation_countdown_group.addButton(btn, i)
             self.meditation_countdown_buttons[text] = btn
             btn.minutes = minutes  # 存储分钟数
@@ -2088,7 +2095,10 @@ class QuickInputWindow(QWidget):
                 self.meditation_is_running = False
                 self.meditation_pause_btn.setText("▶ 继续")
                 logger.info("倒计时结束")
-                # 可以播放提示音或显示提示
+                
+                # 倒计时结束后，如果在冥想标签页，显示默认金句
+                if self.target_platform == "meditation":
+                    self._finish_meditation()
         else:
             self.meditation_current_seconds += 1
         
@@ -2132,13 +2142,33 @@ class QuickInputWindow(QWidget):
         for btn in self.meditation_countdown_buttons.values():
             btn.setChecked(False)
         
-        # 只在冥想标签页时恢复UI
+        # 只在冥想标签页时恢复UI，显示默认金句
         if self.target_platform == "meditation":
-            self.meditation_timer_widget.setVisible(False)
-            self.text_edit.setVisible(True)
-            self.options_container.setVisible(True)
+            self._finish_meditation()
         
         logger.info("冥想计时器已停止")
+    
+    def _finish_meditation(self):
+        """冥想结束后的UI处理（显示默认金句）"""
+        try:
+            # 隐藏计时器，显示金句和选项
+            self.meditation_timer_widget.setVisible(False)
+            self.text_edit.setVisible(False)  # 不显示输入框
+            self.options_container.setVisible(True)
+            self.meditation_quote_widget.setVisible(True)
+            
+            # 显示默认金句
+            self._show_default_quote()
+            
+            # 重置所有按钮状态
+            for btn in self.meditation_countdown_buttons.values():
+                btn.setChecked(False)
+            self.meditation_timer_start_btn.setChecked(False)
+            self.meditation_quote_view_btn.setChecked(False)
+            
+            logger.info("冥想结束，显示默认金句")
+        except Exception as e:
+            logger.error(f"冥想结束处理失败: {e}", exc_info=True)
     
     def focusOutEvent(self, event):
         """失去焦点时不自动隐藏（用户可能需要切换窗口）"""
