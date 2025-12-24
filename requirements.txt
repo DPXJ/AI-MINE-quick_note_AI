@@ -3,8 +3,9 @@ PyQt5>=5.15.9
 PyQt5-Qt5>=5.15.2
 
 # 快捷键和剪切板
-keyboard>=0.13.5  # 更稳定的快捷键库
+pynput>=1.7.6
 pyperclip>=1.8.2
+pywin32>=306  # pynput 在 Windows 上的底层依赖
 
 # API集成
 notion-client>=2.2.1

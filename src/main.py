@@ -217,11 +217,11 @@ class QuickNoteApp(QObject):
             except Exception as e:
                 logger.error(f"状态检查异常: {e}", exc_info=True)
         
-        # 每10分钟检查一次（使用keyboard库后更稳定，减少检查频率）
+        # 每2分钟检查一次
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(check_status)
-        self.status_timer.start(600000)  # 600秒 = 10分钟
-        logger.info("快捷键状态定期检查已启动（每10分钟）")
+        self.status_timer.start(120000)  # 120秒 = 2分钟
+        logger.info("快捷键状态定期检查已启动（每2分钟）")
     
     def _show_quick_input(self):
         """显示快速输入窗口"""
