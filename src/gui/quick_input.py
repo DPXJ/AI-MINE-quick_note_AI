@@ -21,19 +21,33 @@ class CustomTextEdit(QTextEdit):
     
     def keyPressEvent(self, event: QKeyEvent):
         """按键事件处理"""
-        # Ctrl+Enter: 换行（正常处理）
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-            if event.modifiers() & Qt.ControlModifier:
-                # Ctrl+Enter: 正常换行
-                super().keyPressEvent(event)
+        # 获取按键和修饰符
+        key = event.key()
+        modifiers = event.modifiers()
+        
+        # Ctrl+Enter: 换行
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            # 检查是否按下了 Ctrl 键（兼容不同系统）
+            ctrl_pressed = (
+                modifiers & Qt.ControlModifier or 
+                modifiers == Qt.ControlModifier
+            )
+            
+            if ctrl_pressed:
+                # Ctrl+Enter: 插入换行符
+                cursor = self.textCursor()
+                cursor.insertText('\n')
+                self.setTextCursor(cursor)
+                event.accept()
                 return
             else:
-                # Enter: 提交内容
+                # 单独的Enter: 提交内容
                 self.submit_requested.emit()
                 event.accept()
                 return
+        
         # Esc: 取消
-        elif event.key() == Qt.Key_Escape:
+        if key == Qt.Key_Escape:
             self.cancel_requested.emit()
             event.accept()
             return
@@ -1408,12 +1422,13 @@ class QuickInputWindow(QWidget):
         button_layout.setSpacing(10)
         button_layout.setContentsMargins(0, 8, 0, 0)  # 增加顶部边距
         
-        # 提示标签
-        hint_label = QLabel("💡 Enter发送 | Ctrl+Enter换行 | Esc取消")
+        # 提示标签（加大字号，更醒目）
+        hint_label = QLabel("💡 Ctrl+Enter换行 | Enter发送 | Esc取消")
         hint_label.setStyleSheet(f"""
             QLabel {{
-                color: {fg_secondary};
-                font-size: 12px;
+                color: {accent_color};
+                font-size: 13px;
+                font-weight: bold;
                 padding: 5px;
                 background: transparent;
             }}
@@ -1535,16 +1550,26 @@ class QuickInputWindow(QWidget):
         
         # 根据置顶状态创建或移除遮罩
         if checked:
-            # 置顶时：创建遮罩
-            self._create_overlay_mask()
+            # 置顶时：创建遮罩（如果不存在）
+            if not self._mask_widgets:
+                self._create_overlay_mask()
+            else:
+                # 已有遮罩，显示即可
+                for mask in self._mask_widgets:
+                    mask.show()
         else:
-            # 未置顶时：移除遮罩
-            self._remove_overlay_mask()
+            # 未置顶时：隐藏遮罩（不销毁，提升性能）
+            if self._mask_widgets:
+                for mask in self._mask_widgets:
+                    try:
+                        mask.hide()
+                    except:
+                        pass
         
         # 延迟更新窗口标志，避免窗口关闭
         QTimer.singleShot(50, self._update_window_flags)
         
-        logger.info(f"窗口置顶状态已切换: {self._is_always_on_top}, 按钮文字: {'已置顶' if checked else '未置顶'}, 遮罩: {'已创建' if checked else '已移除'}")
+        logger.info(f"窗口置顶状态已切换: {self._is_always_on_top}, 按钮文字: {'已置顶' if checked else '未置顶'}")
     
     def _create_overlay_mask(self):
         """创建全屏遮罩（使用自定义绘制窗口，可配置颜色和透明度）"""
@@ -1665,13 +1690,16 @@ class QuickInputWindow(QWidget):
     
     def show_at_center(self):
         """显示在鼠标所在屏幕的中央"""
-        # 先移除旧的遮罩（如果存在），避免累积
-        if self._mask_widgets:
-            self._remove_overlay_mask()
-        
-        # 只有置顶时才创建遮罩（在显示窗口之前创建）
+        # 性能优化：仅在需要时创建/更新遮罩
         if self._is_always_on_top:
-            self._create_overlay_mask()
+            # 如果已有遮罩，直接显示；否则创建
+            if not self._mask_widgets:
+                self._create_overlay_mask()
+            else:
+                # 显示已有的遮罩
+                for mask in self._mask_widgets:
+                    if not mask.isVisible():
+                        mask.show()
         
         # 获取鼠标所在屏幕
         screen = self._get_screen_at_cursor()
@@ -1683,65 +1711,45 @@ class QuickInputWindow(QWidget):
         
         self.move(x, y)
         
-        # 确保窗口显示并获取焦点
+        # 确保窗口显示并获取焦点（简化操作，提升性能）
         self.show()
         self.raise_()
         self.activateWindow()
         
-        # 优化：减少延迟调用次数，避免IME丢失焦点
-        def ensure_on_top_and_focus():
-            try:
-                import ctypes
-                hwnd = int(self.winId())
-                
-                # 只在置顶模式下使用TOPMOST，避免影响IME
-                if self._is_always_on_top:
-                    # 设置输入窗口为TOPMOST
-                    ctypes.windll.user32.SetWindowPos(
-                        hwnd,
-                        -2,  # HWND_TOPMOST
-                        0, 0, 0, 0,
-                        0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
-                    )
-                    
-                    # 确保遮罩在输入窗口下方
-                    for mask in self._mask_widgets:
-                        if mask.isVisible():
-                            try:
-                                mask_hwnd = int(mask.winId())
-                                ctypes.windll.user32.SetWindowPos(
-                                    mask_hwnd,
-                                    hwnd,  # 插入到输入窗口之后
-                                    0, 0, 0, 0,
-                                    0x0001 | 0x0002 | 0x0010  # SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
-                                )
-                            except:
-                                pass
-                
-                # 激活窗口（只调用一次，避免IME问题）
-                ctypes.windll.user32.SetForegroundWindow(hwnd)
-                
-                # 聚焦到输入框（使用Qt的方式，更温和）
-                QTimer.singleShot(100, lambda: self.text_edit.setFocus())
-            except Exception as e:
-                logger.warning(f"设置窗口层级失败: {e}")
-                # 降级方案：使用Qt方式聚焦
-                QTimer.singleShot(100, lambda: self.text_edit.setFocus())
+        # 延迟聚焦，避免与窗口显示冲突
+        QTimer.singleShot(50, lambda: self.text_edit.setFocus())
         
-        # 只调用一次延迟，减少对IME的影响
-        QTimer.singleShot(50, ensure_on_top_and_focus)
-        
-        logger.info(f"快速输入窗口已显示在屏幕: {screen.name()}, 遮罩数量: {len(self._mask_widgets)}")
+        logger.debug(f"快速输入窗口已显示在屏幕: {screen.name()}")
     
     def hide(self):
-        """隐藏窗口并移除遮罩"""
-        self._remove_overlay_mask()
+        """隐藏窗口和遮罩（不销毁，提升性能）"""
+        # 性能优化：只隐藏遮罩，不销毁，下次显示时复用
+        if self._mask_widgets:
+            for mask in self._mask_widgets:
+                try:
+                    mask.hide()
+                except:
+                    pass
+        
+        # 清空输入框的焦点，释放资源
+        self.text_edit.clearFocus()
+        
         # 注意：不停止冥想计时器，让它在后台继续运行
         super().hide()
     
     def closeEvent(self, event):
         """窗口关闭事件"""
+        # 停止冥想计时器（如果在运行）
+        if hasattr(self, 'meditation_timer') and self.meditation_timer.isActive():
+            self.meditation_timer.stop()
+        
+        # 清理遮罩资源
         self._remove_overlay_mask()
+        
+        # 清理其他资源
+        if hasattr(self, 'text_edit'):
+            self.text_edit.clearFocus()
+        
         super().closeEvent(event)
     
     
