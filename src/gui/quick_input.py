@@ -1510,9 +1510,8 @@ class QuickInputWindow(QWidget):
     
     def _update_window_flags(self):
         """更新窗口标志（根据置顶状态）"""
-        # 保存当前窗口位置和大小
+        # 保存当前窗口位置
         current_pos = self.pos()
-        current_size = self.size()
         is_visible = self.isVisible()
         
         flags = (
@@ -1524,9 +1523,10 @@ class QuickInputWindow(QWidget):
             flags |= Qt.WindowStaysOnTopHint  # 保持在顶层
         
         self.setWindowFlags(flags)
-        # 恢复窗口位置和大小
+        
+        # 恢复窗口位置，强制固定大小
         self.move(current_pos)
-        self.resize(current_size)
+        self.setFixedSize(1000, 620)  # 强制固定大小，防止记住错误的大小
         
         # 重新显示窗口以应用新的标志
         if is_visible:
@@ -1675,7 +1675,10 @@ class QuickInputWindow(QWidget):
     
     def show_at_center(self):
         """显示在鼠标所在屏幕的中央"""
-        # 先移除旧的遮罩（如果存在），避免累积
+        # 【性能优化】强制固定窗口大小，防止记住错误的大小
+        self.setFixedSize(1000, 620)
+        
+        # 【性能优化】先移除旧的遮罩（如果存在），避免累积
         if self._mask_widgets:
             self._remove_overlay_mask()
         
@@ -1687,61 +1690,51 @@ class QuickInputWindow(QWidget):
         screen = self._get_screen_at_cursor()
         screen_geometry = screen.geometry()
         
-        # 计算中心位置（相对于该屏幕）
-        x = screen_geometry.x() + (screen_geometry.width() - self.width()) // 2
-        y = screen_geometry.y() + (screen_geometry.height() - self.height()) // 2
+        # 【修复】使用固定大小计算中心位置（相对于该屏幕）
+        window_width = 1000
+        window_height = 620
+        x = screen_geometry.x() + (screen_geometry.width() - window_width) // 2
+        y = screen_geometry.y() + (screen_geometry.height() - window_height) // 2
         
         self.move(x, y)
         
-        # 确保窗口显示并获取焦点
+        # 【性能优化】立即显示窗口，减少延迟感
         self.show()
         self.raise_()
         self.activateWindow()
         
-        # 优化：减少延迟调用次数，避免IME丢失焦点
-        def ensure_on_top_and_focus():
+        # 【性能优化】简化焦点设置逻辑，减少延迟调用
+        def set_focus_optimized():
+            """优化的焦点设置（减少延迟，提升响应速度）"""
             try:
-                import ctypes
-                hwnd = int(self.winId())
-                
-                # 只在置顶模式下使用TOPMOST，避免影响IME
+                # 只在置顶模式下才设置TOPMOST
                 if self._is_always_on_top:
-                    # 设置输入窗口为TOPMOST
+                    import ctypes
+                    hwnd = int(self.winId())
+                    # 设置为TOPMOST
                     ctypes.windll.user32.SetWindowPos(
-                        hwnd,
-                        -2,  # HWND_TOPMOST
-                        0, 0, 0, 0,
-                        0x0001 | 0x0002  # SWP_NOMOVE | SWP_NOSIZE
+                        hwnd, -2, 0, 0, 0, 0, 0x0001 | 0x0002
                     )
-                    
-                    # 确保遮罩在输入窗口下方
+                    # 确保遮罩在下方（只处理可见的）
                     for mask in self._mask_widgets:
                         if mask.isVisible():
                             try:
-                                mask_hwnd = int(mask.winId())
                                 ctypes.windll.user32.SetWindowPos(
-                                    mask_hwnd,
-                                    hwnd,  # 插入到输入窗口之后
-                                    0, 0, 0, 0,
-                                    0x0001 | 0x0002 | 0x0010  # SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+                                    int(mask.winId()), hwnd, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010
                                 )
                             except:
                                 pass
                 
-                # 激活窗口（只调用一次，避免IME问题）
-                ctypes.windll.user32.SetForegroundWindow(hwnd)
-                
-                # 聚焦到输入框（使用Qt的方式，更温和）
-                QTimer.singleShot(100, lambda: self.text_edit.setFocus())
+                # 立即聚焦到输入框（不再延迟）
+                self.text_edit.setFocus()
             except Exception as e:
                 logger.warning(f"设置窗口层级失败: {e}")
-                # 降级方案：使用Qt方式聚焦
-                QTimer.singleShot(100, lambda: self.text_edit.setFocus())
+                self.text_edit.setFocus()
         
-        # 只调用一次延迟，减少对IME的影响
-        QTimer.singleShot(50, ensure_on_top_and_focus)
+        # 【性能优化】减少延迟时间（50ms -> 30ms）
+        QTimer.singleShot(30, set_focus_optimized)
         
-        logger.info(f"快速输入窗口已显示在屏幕: {screen.name()}, 遮罩数量: {len(self._mask_widgets)}")
+        logger.debug(f"快速输入窗口已显示 (屏幕: {screen.name()}, 遮罩: {len(self._mask_widgets)})")
     
     def hide(self):
         """隐藏窗口并移除遮罩"""
