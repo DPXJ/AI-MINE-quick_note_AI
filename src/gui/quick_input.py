@@ -477,6 +477,8 @@ class QuickInputWindow(QWidget):
     
     # 信号：内容提交（平台，内容，额外参数字典）
     content_submitted = pyqtSignal(str, str, dict)  # platform, content, extra_params
+    # 信号：窗口显示时发出（用于自愈机制：重启快捷键）
+    window_shown = pyqtSignal()
     
     def __init__(self, config: dict):
         """
@@ -921,7 +923,7 @@ class QuickInputWindow(QWidget):
         quick_tags_layout.setContentsMargins(0, 0, 0, 0)
         self.notion_tag_quick_buttons = {}
 
-        quick_tag_options = ["闪念", "AI峡谷"]
+        quick_tag_options = ["闪念", "工作"]
         for i, tag_name in enumerate(quick_tag_options):
             btn = SelectedDotButton(
                 tag_name,
@@ -935,7 +937,8 @@ class QuickInputWindow(QWidget):
             )
             btn.setFixedHeight(28)
             btn.setFixedWidth(72)
-            btn.setChecked(True)  # 默认两个都选中
+            # 默认只选中"闪念"，"工作"不选中
+            btn.setChecked(i == 0)  # i==0 表示"闪念"
             self.notion_tag_quick_buttons[tag_name] = btn
             quick_tags_layout.addWidget(btn)
 
@@ -1733,6 +1736,9 @@ class QuickInputWindow(QWidget):
         
         # 【性能优化】减少延迟时间（50ms -> 30ms）
         QTimer.singleShot(30, set_focus_optimized)
+        
+        # 【自愈机制】发出窗口显示信号，用于检查/重启快捷键
+        self.window_shown.emit()
         
         logger.debug(f"快速输入窗口已显示 (屏幕: {screen.name()}, 遮罩: {len(self._mask_widgets)})")
     

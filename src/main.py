@@ -167,6 +167,8 @@ class QuickNoteApp(QObject):
         """连接信号和槽"""
         # 快速输入窗口
         self.quick_input_window.content_submitted.connect(self._on_quick_input_submitted)
+        # 【自愈机制】窗口显示时检查快捷键
+        self.quick_input_window.window_shown.connect(self._check_and_heal_hotkey)
         
         # 系统托盘
         self.tray_icon.quick_input_triggered.connect(self._show_quick_input)
@@ -571,8 +573,56 @@ class QuickNoteApp(QObject):
         except Exception as e:
             logger.error(f"处理剪切板内容失败: {e}")
     
+    def _check_and_heal_hotkey(self):
+        """【自愈机制】检查快捷键状态，必要时重启"""
+        try:
+            # 获取快捷键监听器状态
+            status = self.hotkey_listener.get_status()
+            
+            # 检查是否需要重启
+            need_restart = False
+            
+            # 1. 监听器不存活
+            if not status.get('listener_alive', False):
+                logger.warning("快捷键监听器不存活，准备重启")
+                need_restart = True
+            
+            # 2. 监听器未运行
+            elif not status.get('is_running', False):
+                logger.warning("快捷键监听器未运行，准备重启")
+                need_restart = True
+            
+            # 3. 检查是否长时间未响应（超过5分钟没有活动可能异常）
+            elif status.get('last_activity_seconds_ago') is not None:
+                if status['last_activity_seconds_ago'] > 300:  # 5分钟
+                    # 避免频繁重启：检查上次重启时间
+                    import time
+                    if not hasattr(self, '_last_heal_time'):
+                        self._last_heal_time = 0
+                    
+                    if time.time() - self._last_heal_time > 120:  # 至少间隔2分钟
+                        logger.warning(f"快捷键监听器长时间无活动 ({status['last_activity_seconds_ago']}秒)，准备重启")
+                        need_restart = True
+            
+            # 执行重启
+            if need_restart:
+                import time
+                self._last_heal_time = time.time()
+                logger.info("【自愈】触发快捷键重启")
+                self._restart_hotkey_listener_internal()
+            else:
+                logger.debug(f"【自愈】快捷键状态正常，无需重启 (alive={status.get('listener_alive')}, running={status.get('is_running')})")
+                
+        except Exception as e:
+            logger.error(f"快捷键自愈检查失败: {e}")
+    
     def _restart_hotkey_listener(self):
-        """重启快捷键监听器"""
+        """手动重启快捷键监听器（从托盘菜单调用）"""
+        logger.info("用户手动触发快捷键重启")
+        self._restart_hotkey_listener_internal()
+    
+    def _restart_hotkey_listener_internal(self):
+        """内部方法：重启快捷键监听器"""
         try:
             logger.info("正在重启快捷键监听器...")
             
@@ -596,11 +646,9 @@ class QuickNoteApp(QObject):
             self.hotkey_listener.start()
             
             logger.info("快捷键监听器已重启")
-            self.tray_icon.show_message("快捷键已重启", "快捷键监听器已重新启动 ✅")
             
         except Exception as e:
             logger.error(f"重启快捷键监听器失败: {e}", exc_info=True)
-            self.tray_icon.show_message("重启失败", f"无法重启快捷键监听器: {str(e)}")
     
     def _restart_app(self):
         """重启应用"""
