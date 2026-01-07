@@ -698,6 +698,8 @@ class QuickInputWindow(QWidget):
         self.notion_tab_btn = QPushButton("📝 Notion")
         self.notion_tab_btn.setCheckable(True)
         self.notion_tab_btn.setChecked(True)
+        self.notion_tab_btn.setToolTip("点击切换到 Notion 笔记模式\n支持状态、优先级和标签管理")
+        self.notion_tab_btn.setCursor(Qt.PointingHandCursor)
         self.notion_tab_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
@@ -710,13 +712,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-                border: 1px solid rgba(94, 184, 217, 0.4);
-                color: {fg_color};
+                border: 2px solid {accent_color};
+                color: {accent_color};
+                transform: translateY(-1px);
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-                border: 1px solid {accent_color};
+                border: 2px solid {accent_color};
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -730,6 +733,8 @@ class QuickInputWindow(QWidget):
         self.flomo_tab_btn = QPushButton("🏷️ Flomo")
         self.flomo_tab_btn.setCheckable(True)
         self.flomo_tab_btn.setChecked(False)
+        self.flomo_tab_btn.setToolTip("点击切换到 Flomo 模式\n快速记录金句、知识和方法论")
+        self.flomo_tab_btn.setCursor(Qt.PointingHandCursor)
         self.flomo_tab_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
@@ -742,13 +747,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-                border: 1px solid rgba(94, 184, 217, 0.4);
-                color: {fg_color};
+                border: 2px solid {accent_color};
+                color: {accent_color};
+                transform: translateY(-1px);
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-                border: 1px solid {accent_color};
+                border: 2px solid {accent_color};
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -762,6 +768,8 @@ class QuickInputWindow(QWidget):
         self.ticktick_tab_btn = QPushButton("✅ 滴答清单")
         self.ticktick_tab_btn.setCheckable(True)
         self.ticktick_tab_btn.setChecked(False)
+        self.ticktick_tab_btn.setToolTip("点击切换到滴答清单模式\n快速创建待办任务，AI 自动识别时间")
+        self.ticktick_tab_btn.setCursor(Qt.PointingHandCursor)
         self.ticktick_tab_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
@@ -774,13 +782,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-                border: 1px solid rgba(94, 184, 217, 0.4);
-                color: {fg_color};
+                border: 2px solid {accent_color};
+                color: {accent_color};
+                transform: translateY(-1px);
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-                border: 1px solid {accent_color};
+                border: 2px solid {accent_color};
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -794,6 +803,8 @@ class QuickInputWindow(QWidget):
         self.meditation_tab_btn = QPushButton("🧘 冥想")
         self.meditation_tab_btn.setCheckable(True)
         self.meditation_tab_btn.setChecked(False)
+        self.meditation_tab_btn.setToolTip("点击切换到冥想模式\n提供倒计时、正向计时和每日金句")
+        self.meditation_tab_btn.setCursor(Qt.PointingHandCursor)
         self.meditation_tab_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {bg_secondary};
@@ -806,13 +817,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-                border: 1px solid rgba(94, 184, 217, 0.4);
-                color: {fg_color};
+                border: 2px solid {accent_color};
+                color: {accent_color};
+                transform: translateY(-1px);
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-                border: 1px solid {accent_color};
+                border: 2px solid {accent_color};
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
