@@ -183,13 +183,13 @@ class AIProcessor:
         # 2️⃣ 再尝试Flomo规则（如果启用）
         flomo_enabled = config.get("ai_rules.flomo.enabled", True)
         if flomo_enabled:
-            # 【预检查】过滤明显不符合的内容（提升性能）
+            # 【严格预检查】过滤明显不符合的内容（提升性能）
             content_length = len(content)
             
-            # Flomo的预检查相对宽松（因为它要求高认知密度，可能包含较长文本）
-            # 但超过2000字的内容基本不可能是高质量的单条笔记
-            if content_length > 2000:
-                logger.debug(f"Flomo预检查：内容过长({content_length}字)，已拒绝")
+            # Flomo笔记特点：绝大多数100字以下，个别段落450字以下，一般不超过500字
+            # 超过500字的内容基本都是文章/长文，不适合作为单条笔记
+            if content_length > 500:
+                logger.debug(f"Flomo预检查：内容过长({content_length}字)，已拒绝（建议500字以内）")
             else:
                 # 检查是否为操作手册、教程类（这类内容Flomo明确拒绝）
                 tutorial_keywords = ["操作步骤", "使用方法", "配置指南", "安装教程", "第一步", "第二步", "第三步"]
