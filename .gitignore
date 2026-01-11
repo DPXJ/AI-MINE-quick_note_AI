@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+ENV/
+env/
+
+# 配置文件（包含敏感信息）
+.env
+config.yaml
+
+# 日志文件
+logs/
+*.log
+
+# 数据文件
+data/
+*.db
+*.sqlite
+*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 打包文件
+*.spec
+build/
+dist/
+*.exe
+*.pkg
+*.zip
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+
+# 打包相关
+*.toc
+*.pyz
+pyi_rth_*.py
+
+# 编译文件
+*.pyc
+*.pyo
+*.pyd
+

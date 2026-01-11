@@ -1,0 +1,27 @@
+# GUI框架
+PyQt5>=5.15.9
+PyQt5-Qt5>=5.15.2
+
+# 快捷键和剪切板
+pynput>=1.7.6
+pyperclip>=1.8.2
+pywin32>=306  # pynput 在 Windows 上的底层依赖
+
+# API集成
+notion-client>=2.2.1
+requests>=2.31.0
+
+# AI模型
+openai>=1.6.1
+anthropic>=0.8.1
+
+# 配置管理
+PyYAML>=6.0.1
+
+# 日志和工具
+python-dotenv>=1.0.0
+loguru>=0.7.2
+
+# 打包工具
+pyinstaller>=6.3.0
+
