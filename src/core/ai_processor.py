@@ -152,6 +152,7 @@ class AIProcessor:
             has_time_keyword = any(keyword in content for keyword in time_keywords)
             
             if has_time_keyword:
+<<<<<<< HEAD
                 ticktick_prompt = config.get("ai_rules.ticktick.prompt", "")
                 if ticktick_prompt:
                     # 添加类型标识和标签提取要求
@@ -160,10 +161,40 @@ class AIProcessor:
                     if result and result.get("valuable") and result.get("type") == "ticktick":
                         logger.info(f"AI分类结果：TickTick - {result}")
                         return result
+=======
+                # 【严格预检查】在调用AI前先过滤明显不符合的内容
+                content_length = len(content)
+                
+                # 🚫 拦截规则1：长度超过100字，直接拒绝
+                if content_length > 100:
+                    logger.debug(f"滴答清单预检查：内容过长({content_length}字)，已拒绝")
+                    # 不调用AI，继续检查其他规则
+                else:
+                    # 🚫 拦截规则2：包含结构化文档特征（Markdown标题、提示词模板）
+                    structure_keywords = ["# Role:", "## Background", "## Goals", "## Workflow", 
+                                        "## Skills", "## Constraints", "## Output", "## Example",
+                                        "## Initialization", "### ", "**Input", "**Output"]
+                    has_structure = any(keyword in content for keyword in structure_keywords)
+                    
+                    if has_structure:
+                        logger.debug(f"滴答清单预检查：包含结构化文档特征，已拒绝")
+                        # 不调用AI，继续检查其他规则
+                    else:
+                        # 通过预检查，调用AI进行详细分析
+                        ticktick_prompt = config.get("ai_rules.ticktick.prompt", "")
+                        if ticktick_prompt:
+                            # 添加类型标识和标签提取要求
+                            ticktick_prompt_with_type = ticktick_prompt + "\n\n如果符合条件，返回的type必须是\"ticktick\"，并且需要提取tags（任务标签，如['会议', '产品评审']）。"
+                            result = self.analyze_content(content, ticktick_prompt_with_type)
+                            if result and result.get("valuable") and result.get("type") == "ticktick":
+                                logger.info(f"AI分类结果：TickTick - {result}")
+                                return result
+>>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         
         # 2️⃣ 再尝试Flomo规则（如果启用）
         flomo_enabled = config.get("ai_rules.flomo.enabled", True)
         if flomo_enabled:
+<<<<<<< HEAD
             flomo_prompt = config.get("ai_rules.flomo.prompt", "")
             if flomo_prompt:
                 # 添加类型标识
@@ -172,10 +203,36 @@ class AIProcessor:
                 if result and result.get("valuable") and result.get("type") == "flomo":
                     logger.info(f"AI分类结果：Flomo - {result}")
                     return result
+=======
+            # 【严格预检查】过滤明显不符合的内容（提升性能）
+            content_length = len(content)
+            
+            # Flomo笔记特点：绝大多数100字以下，个别段落450字以下，一般不超过500字
+            # 超过500字的内容基本都是文章/长文，不适合作为单条笔记
+            if content_length > 500:
+                logger.debug(f"Flomo预检查：内容过长({content_length}字)，已拒绝（建议500字以内）")
+            else:
+                # 检查是否为操作手册、教程类（这类内容Flomo明确拒绝）
+                tutorial_keywords = ["操作步骤", "使用方法", "配置指南", "安装教程", "第一步", "第二步", "第三步"]
+                is_tutorial = any(keyword in content for keyword in tutorial_keywords)
+                
+                if is_tutorial:
+                    logger.debug(f"Flomo预检查：教程类内容，已拒绝")
+                else:
+                    flomo_prompt = config.get("ai_rules.flomo.prompt", "")
+                    if flomo_prompt:
+                        # 添加类型标识
+                        flomo_prompt_with_type = flomo_prompt + "\n\n如果符合条件，返回的type必须是\"flomo\"。"
+                        result = self.analyze_content(content, flomo_prompt_with_type)
+                        if result and result.get("valuable") and result.get("type") == "flomo":
+                            logger.info(f"AI分类结果：Flomo - {result}")
+                            return result
+>>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         
         # 3️⃣ 最后尝试Notion规则（如果启用）
         notion_enabled = config.get("ai_rules.notion.enabled", True)
         if notion_enabled:
+<<<<<<< HEAD
             notion_prompt = config.get("ai_rules.notion.prompt", "")
             if notion_prompt:
                 # 添加类型标识和标签提取要求
@@ -184,6 +241,23 @@ class AIProcessor:
                 if result and result.get("valuable") and result.get("type") == "notion":
                     logger.info(f"AI分类结果：Notion - {result}")
                     return result
+=======
+            # 【预检查】过滤明显不符合的内容
+            content_length = len(content)
+            
+            # Notion主要用于任务和灵感，通常不会太长
+            if content_length > 1000:
+                logger.debug(f"Notion预检查：内容过长({content_length}字)，已拒绝")
+            else:
+                notion_prompt = config.get("ai_rules.notion.prompt", "")
+                if notion_prompt:
+                    # 添加类型标识和标签提取要求
+                    notion_prompt_with_type = notion_prompt + "\n\n如果符合条件，返回的type必须是\"notion\"，并且需要提取tags（标签，如['产品', '待办']）。"
+                    result = self.analyze_content(content, notion_prompt_with_type)
+                    if result and result.get("valuable") and result.get("type") == "notion":
+                        logger.info(f"AI分类结果：Notion - {result}")
+                        return result
+>>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         
         # 都不符合
         return {"valuable": False, "type": None}
