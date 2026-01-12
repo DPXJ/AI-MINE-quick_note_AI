@@ -63,15 +63,28 @@ class TickTickAPI:
             if list_name:
                 email_subject = f"{email_subject} ^{list_name}"
             
-            # 如果有优先级，转换为滴答清单格式（!!! = 高，!! = 中，! = 低）
-            if extra and extra.get("priority"):
+            # 处理优先级标记（支持!1/!2/!3/!4格式）
+            priority_mark = None
+            if extra and extra.get("priority_mark"):
+                # 新格式：直接使用!1/!2/!3/!4
+                priority_mark = extra.get("priority_mark")
+            elif extra and extra.get("priority"):
+                # 旧格式兼容：高/中/低转换为!!!/!!/!
                 priority = extra.get("priority")
                 if priority == "高":
-                    email_subject = f"{email_subject} !!!"
+                    priority_mark = "!!!"
                 elif priority == "中":
-                    email_subject = f"{email_subject} !!"
+                    priority_mark = "!!"
                 elif priority == "低":
-                    email_subject = f"{email_subject} !"
+                    priority_mark = "!"
+            
+            # 如果标题末尾已经有优先级标记（!1/!2/!3/!4），直接使用
+            if title.endswith(('!1', '!2', '!3', '!4')):
+                # 标题已经包含优先级标记，不需要再添加
+                email_subject = title
+            elif priority_mark:
+                # 添加优先级标记到标题末尾
+                email_subject = f"{email_subject} {priority_mark}"
             
             # 如果有截止时间，确保时间信息在标题中
             # 滴答清单会自动识别标题中的时间信息（如"明天下午3点"、"下周一"等）

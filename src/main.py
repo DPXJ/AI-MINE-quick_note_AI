@@ -340,6 +340,64 @@ class QuickNoteApp(QObject):
         else:
             self.clipboard_monitor.stop()
     
+    def _process_ticktick_priority(self, content: str):
+        """
+        处理滴答清单优先级转换
+        识别文本中的优先级关键词并转换为!1/!2/!3/!4格式
+        
+        Args:
+            content: 原始内容
+            
+        Returns:
+            (处理后的内容, 优先级标记) 元组
+            优先级标记格式: !1(高优), !2(中优), !3(低优), !4(无优先级，默认)
+        """
+        import re
+        
+        # 优先级关键词映射（支持多种表达方式）
+        # 使用空格或字符串边界来确保完整匹配（中文不支持\b词边界）
+        priority_patterns = [
+            (r'高优先级', '!1'),  # 匹配"高优先级"
+            (r'高优', '!1'),      # 匹配"高优"
+            (r'中优先级', '!2'),  # 匹配"中优先级"
+            (r'中优', '!2'),      # 匹配"中优"
+            (r'低优先级', '!3'),  # 匹配"低优先级"
+            (r'低优', '!3'),      # 匹配"低优"
+            (r'无优先级', '!4'),  # 匹配"无优先级"
+            (r'无优', '!4'),      # 匹配"无优"
+        ]
+        
+        priority_mark = '!4'  # 默认无优先级
+        processed_content = content
+        
+        # 查找并替换优先级关键词（按顺序匹配，优先匹配完整词）
+        for pattern, mark in priority_patterns:
+            # 使用正则表达式查找（不区分大小写）
+            match = re.search(pattern, processed_content, re.IGNORECASE)
+            if match:
+                # 找到优先级关键词，记录优先级标记
+                priority_mark = mark
+                # 移除文本中的优先级关键词（保留其他内容）
+                processed_content = re.sub(pattern, '', processed_content, flags=re.IGNORECASE)
+                logger.info(f"识别到优先级关键词: '{match.group()}' (模式: {pattern})，转换为: {mark}")
+                logger.debug(f"移除关键词后的内容: '{processed_content}'")
+                break  # 只处理第一个匹配的优先级
+        
+        # 清理多余的空格（将多个连续空格替换为单个空格）
+        processed_content = re.sub(r'\s+', ' ', processed_content).strip()
+        
+        # 在内容末尾添加优先级标记（如果内容不为空）
+        if processed_content:
+            # 确保优先级标记在末尾（如果还没有的话）
+            if not processed_content.endswith(priority_mark):
+                processed_content = f"{processed_content}{priority_mark}"
+        else:
+            # 如果内容为空，只保留优先级标记
+            processed_content = priority_mark
+        
+        logger.info(f"优先级处理: 原文={content}, 处理后={processed_content}, 优先级={priority_mark}")
+        return processed_content, priority_mark
+    
     def _on_quick_input_submitted(self, platform: str, content: str, extra_params: dict = None):
         """处理快速输入的内容"""
         extra_params = extra_params or {}
@@ -406,20 +464,34 @@ class QuickNoteApp(QObject):
             
             self.tray_icon.show_message("处理中", "正在保存到滴答清单...")
             
-            # 生成任务标题（取前50个字符，如果内容较长）
-            title = content[:50] + "..." if len(content) > 50 else content
+            # 处理优先级转换：识别文本中的优先级关键词并转换为!1/!2/!3/!4格式
+            logger.info(f"开始处理优先级，原始内容: '{content}'")
+            processed_content, priority_mark = self._process_ticktick_priority(content)
+            logger.info(f"优先级处理完成，处理后内容: '{processed_content}', 优先级标记: '{priority_mark}'")
             
-            # AI 提取时间信息（从内容中自动提取）
+            # 生成任务标题（取前50个字符，如果内容较长，但要保留优先级标记）
+            if len(processed_content) > 50:
+                # 如果内容以优先级标记结尾，先移除标记，截断后再添加
+                if processed_content.endswith(('!1', '!2', '!3', '!4')):
+                    priority_suffix = processed_content[-2:]  # 获取!1/!2/!3/!4
+                    main_content = processed_content[:-2].strip()  # 移除优先级标记
+                    title = main_content[:50] + "..." + priority_suffix
+                else:
+                    title = processed_content[:50] + "..."
+            else:
+                title = processed_content
+            
+            # AI 提取时间信息（从处理后的内容中自动提取）
             time_info = None
             due_date = None
             
             if self.ai_processor:
                 try:
-                    # 从内容中提取时间信息
-                    time_info = self.ai_processor.extract_time_info(content)
+                    # 从内容中提取时间信息（使用处理后的内容）
+                    time_info = self.ai_processor.extract_time_info(processed_content)
                     if time_info and time_info.get("datetime_ticktick"):
                         due_date = time_info.get("datetime_ticktick")
-                        logger.info(f"识别到时间: {due_date} (原文: {content})")
+                        logger.info(f"识别到时间: {due_date} (原文: {processed_content})")
                 except Exception as e:
                     logger.warning(f"时间提取失败，将不设置截止时间: {e}")
             
@@ -427,10 +499,12 @@ class QuickNoteApp(QObject):
             extra_dict = {}
             if due_date:
                 extra_dict["due_date"] = due_date
+            if priority_mark:
+                extra_dict["priority_mark"] = priority_mark
             
             success = self.ticktick_api.add_task(
                 title=title,
-                content=content,
+                content=processed_content,
                 extra=extra_dict if extra_dict else None
             )
             
@@ -535,13 +609,28 @@ class QuickNoteApp(QObject):
             
             elif target_type == "ticktick" and self.ticktick_api:
                 # 保存到滴答清单
-                title = content[:50] + "..." if len(content) > 50 else content
+                # 处理优先级转换：识别文本中的优先级关键词并转换为!1/!2/!3/!4格式
+                logger.info(f"剪切板自动同步 - 开始处理优先级，原始内容: '{content}'")
+                processed_content, priority_mark = self._process_ticktick_priority(content)
+                logger.info(f"剪切板自动同步 - 优先级处理完成，处理后内容: '{processed_content}', 优先级标记: '{priority_mark}'")
                 
-                # 提取时间信息
+                # 生成任务标题（取前50个字符，如果内容较长，但要保留优先级标记）
+                if len(processed_content) > 50:
+                    # 如果内容以优先级标记结尾，先移除标记，截断后再添加
+                    if processed_content.endswith(('!1', '!2', '!3', '!4')):
+                        priority_suffix = processed_content[-2:]  # 获取!1/!2/!3/!4
+                        main_content = processed_content[:-2].strip()  # 移除优先级标记
+                        title = main_content[:50] + "..." + priority_suffix
+                    else:
+                        title = processed_content[:50] + "..."
+                else:
+                    title = processed_content
+                
+                # 提取时间信息（使用处理后的内容）
                 time_info = None
                 due_date = None
                 try:
-                    time_info = self.ai_processor.extract_time_info(content)
+                    time_info = self.ai_processor.extract_time_info(processed_content)
                     if time_info and time_info.get("has_time"):
                         due_date = time_info.get("datetime_ticktick") or time_info.get("datetime")
                         logger.info(f"识别到时间: {due_date}")
@@ -551,10 +640,12 @@ class QuickNoteApp(QObject):
                 extra_params = {}
                 if due_date:
                     extra_params["due_date"] = due_date
+                if priority_mark:
+                    extra_params["priority_mark"] = priority_mark
                 
                 success = self.ticktick_api.add_task(
                     title=title,
-                    content=content,
+                    content=processed_content,
                     extra=extra_params if extra_params else None
                 )
                 
