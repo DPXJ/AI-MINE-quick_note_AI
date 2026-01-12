@@ -4,6 +4,20 @@ __pycache__/
 *$py.class
 *.so
 .Python
+<<<<<<< HEAD
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+ENV/
+env/
+
+# 配置文件（包含敏感信息）
+.env
+config.yaml
+=======
 env/
 venv/
 ENV/
@@ -27,19 +41,59 @@ wheels/
 *.spec
 build/
 dist/
+>>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
 
 # 日志文件
 logs/
 *.log
 
+<<<<<<< HEAD
+# 数据文件
+data/
+*.db
+*.sqlite
+*.json
+=======
 # 环境变量
 .env
+>>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+<<<<<<< HEAD
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 打包文件
+*.spec
+build/
+dist/
+*.exe
+*.pkg
+*.zip
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+
+# 打包相关
+*.toc
+*.pyz
+pyi_rth_*.py
+
+# 编译文件
+*.pyc
+*.pyo
+*.pyd
+=======
 
 # OS
 .DS_Store
@@ -48,4 +102,5 @@ Thumbs.db
 # 测试文件
 test_*.py
 *_test.py
+>>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
 
