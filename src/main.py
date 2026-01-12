@@ -167,11 +167,8 @@ class QuickNoteApp(QObject):
         """连接信号和槽"""
         # 快速输入窗口
         self.quick_input_window.content_submitted.connect(self._on_quick_input_submitted)
-<<<<<<< HEAD
-=======
         # 【自愈机制】窗口显示时检查快捷键
         self.quick_input_window.window_shown.connect(self._check_and_heal_hotkey)
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         
         # 系统托盘
         self.tray_icon.quick_input_triggered.connect(self._show_quick_input)
@@ -667,10 +664,6 @@ class QuickNoteApp(QObject):
         except Exception as e:
             logger.error(f"处理剪切板内容失败: {e}")
     
-<<<<<<< HEAD
-    def _restart_hotkey_listener(self):
-        """重启快捷键监听器"""
-=======
     def _check_and_heal_hotkey(self):
         """【自愈机制】检查快捷键状态，必要时重启"""
         try:
@@ -721,7 +714,6 @@ class QuickNoteApp(QObject):
     
     def _restart_hotkey_listener_internal(self):
         """内部方法：重启快捷键监听器"""
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         try:
             logger.info("正在重启快捷键监听器...")
             
@@ -745,17 +737,9 @@ class QuickNoteApp(QObject):
             self.hotkey_listener.start()
             
             logger.info("快捷键监听器已重启")
-<<<<<<< HEAD
-            self.tray_icon.show_message("快捷键已重启", "快捷键监听器已重新启动 ✅")
             
         except Exception as e:
             logger.error(f"重启快捷键监听器失败: {e}", exc_info=True)
-            self.tray_icon.show_message("重启失败", f"无法重启快捷键监听器: {str(e)}")
-=======
-            
-        except Exception as e:
-            logger.error(f"重启快捷键监听器失败: {e}", exc_info=True)
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
     
     def _restart_app(self):
         """重启应用"""

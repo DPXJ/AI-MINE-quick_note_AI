@@ -477,11 +477,8 @@ class QuickInputWindow(QWidget):
     
     # 信号：内容提交（平台，内容，额外参数字典）
     content_submitted = pyqtSignal(str, str, dict)  # platform, content, extra_params
-<<<<<<< HEAD
-=======
     # 信号：窗口显示时发出（用于自愈机制：重启快捷键）
     window_shown = pyqtSignal()
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
     
     def __init__(self, config: dict):
         """
@@ -701,10 +698,7 @@ class QuickInputWindow(QWidget):
         self.notion_tab_btn = QPushButton("📝 Notion")
         self.notion_tab_btn.setCheckable(True)
         self.notion_tab_btn.setChecked(True)
-<<<<<<< HEAD
-=======
         self.notion_tab_btn.setToolTip("点击切换到 Notion 笔记模式\n支持状态、优先级和标签管理")
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         self.notion_tab_btn.setCursor(Qt.PointingHandCursor)
         self.notion_tab_btn.setStyleSheet(f"""
             QPushButton {{
@@ -718,23 +712,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-<<<<<<< HEAD
-                border: 2px solid rgba(94, 184, 217, 0.6);
-                color: {fg_color};
-=======
                 border: 2px solid {accent_color};
                 color: {accent_color};
                 transform: translateY(-1px);
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-<<<<<<< HEAD
-                border: 1px solid {accent_color};
-=======
                 border: 2px solid {accent_color};
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -748,10 +733,7 @@ class QuickInputWindow(QWidget):
         self.flomo_tab_btn = QPushButton("🏷️ Flomo")
         self.flomo_tab_btn.setCheckable(True)
         self.flomo_tab_btn.setChecked(False)
-<<<<<<< HEAD
-=======
         self.flomo_tab_btn.setToolTip("点击切换到 Flomo 模式\n快速记录金句、知识和方法论")
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         self.flomo_tab_btn.setCursor(Qt.PointingHandCursor)
         self.flomo_tab_btn.setStyleSheet(f"""
             QPushButton {{
@@ -765,23 +747,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-<<<<<<< HEAD
-                border: 2px solid rgba(94, 184, 217, 0.6);
-                color: {fg_color};
-=======
                 border: 2px solid {accent_color};
                 color: {accent_color};
                 transform: translateY(-1px);
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-<<<<<<< HEAD
-                border: 1px solid {accent_color};
-=======
                 border: 2px solid {accent_color};
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -795,10 +768,7 @@ class QuickInputWindow(QWidget):
         self.ticktick_tab_btn = QPushButton("✅ 滴答清单")
         self.ticktick_tab_btn.setCheckable(True)
         self.ticktick_tab_btn.setChecked(False)
-<<<<<<< HEAD
-=======
         self.ticktick_tab_btn.setToolTip("点击切换到滴答清单模式\n快速创建待办任务，AI 自动识别时间")
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         self.ticktick_tab_btn.setCursor(Qt.PointingHandCursor)
         self.ticktick_tab_btn.setStyleSheet(f"""
             QPushButton {{
@@ -812,23 +782,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-<<<<<<< HEAD
-                border: 2px solid rgba(94, 184, 217, 0.6);
-                color: {fg_color};
-=======
                 border: 2px solid {accent_color};
                 color: {accent_color};
                 transform: translateY(-1px);
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-<<<<<<< HEAD
-                border: 1px solid {accent_color};
-=======
                 border: 2px solid {accent_color};
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -842,10 +803,7 @@ class QuickInputWindow(QWidget):
         self.meditation_tab_btn = QPushButton("🧘 冥想")
         self.meditation_tab_btn.setCheckable(True)
         self.meditation_tab_btn.setChecked(False)
-<<<<<<< HEAD
-=======
         self.meditation_tab_btn.setToolTip("点击切换到冥想模式\n提供倒计时、正向计时和每日金句")
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         self.meditation_tab_btn.setCursor(Qt.PointingHandCursor)
         self.meditation_tab_btn.setStyleSheet(f"""
             QPushButton {{
@@ -859,23 +817,14 @@ class QuickInputWindow(QWidget):
             }}
             QPushButton:hover {{
                 background: {bg_input};
-<<<<<<< HEAD
-                border: 2px solid rgba(94, 184, 217, 0.6);
-                color: {fg_color};
-=======
                 border: 2px solid {accent_color};
                 color: {accent_color};
                 transform: translateY(-1px);
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:checked {{
                 background: {bg_input};
                 color: {accent_color};
-<<<<<<< HEAD
-                border: 1px solid {accent_color};
-=======
                 border: 2px solid {accent_color};
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             }}
             QPushButton:!checked {{
                 background: {bg_secondary};
@@ -1001,14 +950,7 @@ class QuickInputWindow(QWidget):
             btn.setFixedHeight(28)
             btn.setFixedWidth(72)
             # 默认只选中"闪念"，"工作"不选中
-<<<<<<< HEAD
-            if tag_name == "闪念":
-                btn.setChecked(True)
-            else:
-                btn.setChecked(False)
-=======
             btn.setChecked(i == 0)  # i==0 表示"闪念"
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
             self.notion_tag_quick_buttons[tag_name] = btn
             quick_tags_layout.addWidget(btn)
 
@@ -1807,12 +1749,9 @@ class QuickInputWindow(QWidget):
         # 【性能优化】减少延迟时间（50ms -> 30ms）
         QTimer.singleShot(30, set_focus_optimized)
         
-<<<<<<< HEAD
-=======
         # 【自愈机制】发出窗口显示信号，用于检查/重启快捷键
         self.window_shown.emit()
         
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
         logger.debug(f"快速输入窗口已显示 (屏幕: {screen.name()}, 遮罩: {len(self._mask_widgets)})")
     
     def hide(self):
@@ -1988,25 +1927,12 @@ class QuickInputWindow(QWidget):
             if self.target_platform == "flomo":
                 self.flomo_tags.setText("闪念 QuickNote AI")  # 重置为默认值
             elif self.target_platform == "notion":
-<<<<<<< HEAD
-                # 重置标签：输入框清空 + 默认只选中"闪念"
-                self.notion_tags.setText("")
-                if hasattr(self, "notion_tag_quick_buttons"):
-                    for tag_name, btn in self.notion_tag_quick_buttons.items():
-                        if btn:
-                            # 只选中"闪念"，其他标签不选中
-                            if tag_name == "闪念":
-                                btn.setChecked(True)
-                            else:
-                                btn.setChecked(False)
-=======
                 # 重置标签：输入框清空 + 默认选中“闪念”
                 self.notion_tags.setText("")
                 if hasattr(self, "notion_tag_quick_buttons"):
                     for btn in self.notion_tag_quick_buttons.values():
                         if btn:
                             btn.setChecked(True)
->>>>>>> eb855f52a4ab5168a598f63b5d06f0e2d8ae5db3
                 # 重置状态和优先级按钮为默认值
                 if "待处理" in self.notion_status_buttons:
                     self.notion_status_buttons["待处理"].setChecked(True)
