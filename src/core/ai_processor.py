@@ -198,14 +198,33 @@ class AIProcessor:
                 if is_tutorial:
                     logger.debug(f"Flomo预检查：教程类内容，已拒绝")
                 else:
-                    flomo_prompt = config.get("ai_rules.flomo.prompt", "")
-                    if flomo_prompt:
-                        # 添加类型标识
-                        flomo_prompt_with_type = flomo_prompt + "\n\n如果符合条件，返回的type必须是\"flomo\"。"
-                        result = self.analyze_content(content, flomo_prompt_with_type)
-                        if result and result.get("valuable") and result.get("type") == "flomo":
-                            logger.info(f"AI分类结果：Flomo - {result}")
-                            return result
+                    # 检查是否为日报/周报/新闻汇总类（这类内容Flomo明确拒绝）
+                    # 特征1: 标题包含"日报"、"周报"、"月报"等
+                    report_keywords = ["日报", "周报", "月报", "峡谷日报", "AI日报", "行业周报", "今日要闻", "每日金句", "新闻汇总", "本周动态"]
+                    has_report_keyword = any(keyword in content for keyword in report_keywords)
+                    
+                    # 特征2: 使用【日期 · XX】格式的标题
+                    import re
+                    has_date_title = bool(re.search(r'【\d{4}-\d{2}-\d{2}.*?[·・].*?】', content))
+                    
+                    # 特征3: 包含多个bullet points（• 或 -），通常是新闻列表
+                    bullet_count = content.count('•') + content.count('- ')
+                    has_multiple_bullets = bullet_count >= 3
+                    
+                    # 综合判断：如果同时满足日报关键词 + (日期标题 或 多个bullet points)，则拒绝
+                    is_daily_report = has_report_keyword and (has_date_title or has_multiple_bullets)
+                    
+                    if is_daily_report:
+                        logger.debug(f"Flomo预检查：日报/新闻汇总类内容，已拒绝（关键词={has_report_keyword}, 日期标题={has_date_title}, bullet点数={bullet_count}）")
+                    else:
+                        flomo_prompt = config.get("ai_rules.flomo.prompt", "")
+                        if flomo_prompt:
+                            # 添加类型标识
+                            flomo_prompt_with_type = flomo_prompt + "\n\n如果符合条件，返回的type必须是\"flomo\"。"
+                            result = self.analyze_content(content, flomo_prompt_with_type)
+                            if result and result.get("valuable") and result.get("type") == "flomo":
+                                logger.info(f"AI分类结果：Flomo - {result}")
+                                return result
         
         # 3️⃣ 最后尝试Notion规则（如果启用）
         notion_enabled = config.get("ai_rules.notion.enabled", True)
