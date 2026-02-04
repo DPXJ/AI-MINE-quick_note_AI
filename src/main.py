@@ -71,7 +71,7 @@ class QuickNoteApp(QObject):
         # 启动定期状态检查（每2分钟检查一次快捷键状态）
         self._start_status_check()
         
-        # 启动定时自动重启（每4小时重启一次，避免长时间运行导致的闪屏问题）
+        # 启动定时自动重启（每2小时重启一次，避免长时间运行导致的闪屏问题）
         self._start_auto_restart()
         
         logger.info("QuickNote AI 启动完成")
@@ -229,16 +229,16 @@ class QuickNoteApp(QObject):
         logger.info("快捷键状态定期检查已启动（每2分钟）")
     
     def _start_auto_restart(self):
-        """启动定时自动重启（每4小时重启一次，避免长时间运行导致的闪屏问题）"""
+        """启动定时自动重启（每2小时重启一次，避免长时间运行导致的闪屏问题）"""
         from PyQt5.QtCore import QTimer
         
-        auto_restart_hours = config.get("auto_restart_hours", 4)
+        auto_restart_hours = config.get("auto_restart_hours", 2)
         try:
             auto_restart_hours = float(auto_restart_hours)
             if auto_restart_hours <= 0:
-                auto_restart_hours = 4
+                auto_restart_hours = 2
         except (TypeError, ValueError):
-            auto_restart_hours = 4
+            auto_restart_hours = 2
         
         interval_ms = int(auto_restart_hours * 3600 * 1000)
         
