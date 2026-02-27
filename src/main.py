@@ -71,7 +71,7 @@ class QuickNoteApp(QObject):
         # 启动定期状态检查（每2分钟检查一次快捷键状态）
         self._start_status_check()
         
-        # 启动定时自动重启（每2小时重启一次，避免长时间运行导致的闪屏问题）
+        # 启动定时自动重启（每1小时重启一次，避免长时间运行导致的闪屏问题）
         self._start_auto_restart()
         
         logger.info("QuickNote AI 启动完成")
@@ -229,28 +229,33 @@ class QuickNoteApp(QObject):
         logger.info("快捷键状态定期检查已启动（每2分钟）")
     
     def _start_auto_restart(self):
-        """启动定时自动重启（每2小时重启一次，避免长时间运行导致的闪屏问题）"""
+        """启动定时自动重启（每1小时重启一次，避免长时间运行导致的闪屏问题）"""
         from PyQt5.QtCore import QTimer
         
-        auto_restart_hours = config.get("auto_restart_hours", 2)
+        auto_restart_hours = config.get("auto_restart_hours", 1)
         try:
             auto_restart_hours = float(auto_restart_hours)
             if auto_restart_hours <= 0:
-                auto_restart_hours = 2
+                auto_restart_hours = 1
         except (TypeError, ValueError):
-            auto_restart_hours = 2
+            auto_restart_hours = 1
         
         interval_ms = int(auto_restart_hours * 3600 * 1000)
         
         def on_auto_restart():
-            logger.info(f"定时自动重启触发（每 {auto_restart_hours} 小时）")
+            logger.info(f"定时自动重启触发（每 {auto_restart_hours} 小时，间隔 {interval_ms} 毫秒）")
+            logger.info(f"定时器状态：isActive={self.auto_restart_timer.isActive()}, remainingTime={self.auto_restart_timer.remainingTime()}")
             self.tray_icon.show_message("自动重启", f"程序将重启以保持稳定（每 {int(auto_restart_hours)} 小时）")
+            # 注意：重启后新进程会重新初始化定时器，所以这里不需要手动重启定时器
             self._restart_app()
         
         self.auto_restart_timer = QTimer()
+        # 确保定时器是重复触发的（不是单次触发）
+        self.auto_restart_timer.setSingleShot(False)
         self.auto_restart_timer.timeout.connect(on_auto_restart)
         self.auto_restart_timer.start(interval_ms)
-        logger.info(f"定时自动重启已启动（每 {auto_restart_hours} 小时）")
+        logger.info(f"定时自动重启已启动（每 {auto_restart_hours} 小时，间隔 {interval_ms} 毫秒，重复触发）")
+        logger.info(f"定时器初始状态：isActive={self.auto_restart_timer.isActive()}, interval={self.auto_restart_timer.interval()}")
     
     def _show_quick_input(self):
         """显示快速输入窗口"""
